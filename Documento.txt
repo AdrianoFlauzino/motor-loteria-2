@@ -1,0 +1,34 @@
+# Motor Loteria 2.0
+Sistema estatístico avançado para geração e análise de bilhetes de loteria.
+
+## Visão Geral
+Este projeto implementa um motor completo para análise estatística, geração probabilística de dezenas e backtesting real utilizando dados históricos.
+
+## Estratégias Disponíveis
+- Conservador — Baseado em frequência
+- Agressivo — Baseado em atraso
+- Híbrido — Combinação freq + atraso
+- Ponderado — Pesos estatísticos completos
+
+## Estrutura do Projeto
+- filtros.py — Filtros matemáticos (soma, paridade, primos, quadrantes etc.)
+- estatisticas.py — Estatísticas históricas (frequência, atraso, correlação)
+- gerador.py — Motor gerador baseado em estratégias
+- backtesting.py — Simulação histórica real
+- app.py — Interface Streamlit
+- Dashboard_Loteria.xlsx — Dashboard corporativo com 6 abas
+
+## Requisitos
+- Python 3.10+
+- pandas
+- streamlit
+
+## Execução do Aplicativo
+streamlit run app.py
+
+## Licença
+Projeto entregue para uso privado conforme instruções do usuário.
+
+Atualizado em 28/04/2026.
+
+Fim do README

@@ -1,0 +1,70 @@
+MVP Loterias
+
+DOCUMENTAÇÃO TÉCNICA
+
+Motor Loteria 2.0
+
+28 de abril de 2026
+
+---
+
+### 1. Arquitetura Geral
+
+O Motor Loteria 2.0 foi desenvolvido sob uma arquitetura modular e escalável, projetada para processar grandes volumes de dados históricos e aplicar modelos matemáticos de alta precisão. O sistema é dividido em camadas lógicas independentes: a camada de Estatísticas processa a base histórica; a camada de Filtros atua como um firewall probabilístico; o Motor Gerador executa as estratégias de seleção; o módulo de Backtesting valida a eficácia histórica; e a interface Streamlit provê a interação com o usuário final.
+
+### 2. Módulo filtros.py
+
+Este módulo é responsável pela validação rigorosa de cada combinação gerada, garantindo que apenas bilhetes que atendam aos critérios de "normalidade estatística" sejam aprovados. Os principais filtros incluem:
+
+*   **Filtro de Soma:** Garante que a soma das dezenas esteja dentro do intervalo de maior ocorrência histórica (ex: 120 a 210).
+*   **Filtro de Paridade:** Valida a proporção entre números pares e ímpares, priorizando padrões como 3/3 ou 4/2.
+*   **Filtro de Primos:** Controla a densidade de números primos por bilhete, evitando combinações matematicamente raras.
+*   **Filtro de Repetentes:** Analisa a intersecção com o concurso anterior para evitar repetições improváveis.
+*   **Filtro de Sequências:** Identifica e elimina sequências numéricas longas (ex: 3 ou mais números consecutivos) que possuem baixíssima frequência de sorteio.
+
+### 3. Módulo estatisticas.py
+
+O módulo de estatísticas realiza o processamento analítico pesado sobre a base de dados CSV. Suas funções principais abrangem:
+
+*   **Frequência:** Mapeamento das dezenas mais e menos sorteadas em janelas de tempo configuráveis.
+*   **Atraso (Delay):** Cálculo do intervalo de concursos desde a última aparição de cada dezena.
+*   **Correlação:** Identificação de grupos de dezenas que apresentam tendência de sorteio conjunto.
+*   **Quadrantes:** Análise da distribuição espacial das dezenas no volante, dividindo-o em quatro áreas simétricas.
+*   **Distribuição de Soma e Paridade:** Geração de médias e desvios padrão para calibração automática dos filtros.
+
+### 4. Módulo gerador.py
+
+O motor gerador é o núcleo de inteligência do sistema, permitindo a criação de jogos baseados em quatro perfis estratégicos distintos:
+
+*   **Conservador:** Seleção baseada estritamente na alta frequência histórica das dezenas.
+*   **Agressivo:** Foca em dezenas com maior índice de atraso, apostando na lei das probabilidades para o retorno da dezena.
+*   **Híbrido:** Combina dezenas frequentes e atrasadas em uma proporção equilibrada de 50/50.
+*   **Ponderado:** Utiliza um sistema de score onde cada dezena recebe um peso baseado em múltiplos fatores (frequência, atraso e correlação), gerando combinações otimizadas.
+
+### 5. Módulo backtesting.py
+
+Este módulo permite ao usuário testar a eficácia de uma estratégia contra resultados reais do passado. O processo de backtesting percorre uma janela histórica definida e confronta os bilhetes gerados com os sorteios oficiais, retornando métricas críticas como a Taxa de Acertos (quadras, quinas e senas), o ROI Hipotético (Retorno sobre Investimento) e a consistência da estratégia ao longo do tempo.
+
+### 6. Interface app.py
+
+A interface de usuário, construída em Streamlit, centraliza todas as funcionalidades em um ambiente web intuitivo. O fluxo de navegação inclui:
+
+*   **Autenticação:** Sistema de login para proteção de dados e configurações.
+*   **Dashboard Analítico:** Visualização gráfica de tendências e comportamentos das dezenas.
+*   **Painel de Geração:** Configuração de filtros, escolha de estratégia e geração de lotes de apostas.
+*   **Módulo de Simulação:** Execução de backtesting em tempo real com visualização de curvas de desempenho.
+
+### 7. Dashboard_Loteria.xlsx
+
+Arquivo de suporte para auditoria e análise offline, estruturado em seis abas fundamentais:
+
+1.  **Dashboard:** Resumo executivo com indicadores de performance e gráficos principais.
+2.  **Base_Historica:** Repositório completo de sorteios para consulta rápida.
+3.  **Filtros:** Detalhamento dos parâmetros técnicos utilizados na validação.
+4.  **Geracao:** Lista de bilhetes exportados pelo motor para conferência.
+5.  **Backtesting:** Relatório detalhado das simulações e acertos históricos.
+6.  **Relatorios:** Consolidação de dados para fins de arquivamento e planejamento financeiro.
+
+---
+
+Fim da Documentação
