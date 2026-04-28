@@ -12,111 +12,137 @@ from estatisticas import (
     calcular_estatisticas_altas_baixas
 )
 
-
-@st.cache_data
-def padronizar_df(_df):
+def padronizar_colunas(df):
     """
-    Padroniza o DataFrame para ter colunas n1 a n6 com números inteiros ordenados.
-    Assume que as primeiras 6 colunas são os números da loteria.
+    Padroniza as colunas do DataFrame, detectando exatamente 6 colunas numéricas
+    e renomeando para n1 a n6. Inverte a ordem para exibir o mais recente primeiro.
     """
-    df = _df.iloc[:, :6].copy()
-    df.columns = [f'n{i+1}' for i in range(6)]
-    for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-    df = df.dropna()
-    # Ordena os números em cada linha (sorteio)
-    df = df.apply(lambda row: sorted(row), axis=1).apply(pd.Series)
-    df.columns = [f'n{i+1}' for i in range(6)]
-    return df.astype(int)
+    colunas_numericas = df.select_dtypes(include=['number']).columns.tolist()
+    if len(colunas_numericas) != 6:
+        return None, f"Erro: O arquivo deve conter exatamente 6 colunas numéricas. Encontradas {len(colunas_numericas)} colunas: {colunas_numericas}"
+    
+    mapeamento = {colunas_numericas[i]: f'n{i+1}' for i in range(6)}
+    df = df.rename(columns=mapeamento).copy()
+    
+    # Inverte a ordem das linhas (mais recente primeiro)
+    df = df.iloc[::-1].reset_index(drop=True)
+    
+    return df, None
 
-
+# Configuração da página
 st.set_page_config(
-    layout="wide",
-    page_title="Estatísticas de Loterias",
-    page_icon="📊"
+    page_title="Analisador de Loterias",
+    page_icon="🔮",
+    layout="wide"
 )
 
-st.title("📊 Análise Estatística Completa de Loterias")
-
+# Título e descrição
+st.title("🔮 Analisador de Estatísticas de Loterias")
+st.markdown("*Carregue um arquivo CSV com os resultados (6 colunas numéricas por sorteio) e explore as estatísticas detalhadas.*")
 st.markdown("---")
 
-# Upload do arquivo CSV
+# Upload do arquivo
 uploaded_file = st.file_uploader(
-    "Escolha um arquivo CSV com os resultados da loteria",
+    "**Escolha um arquivo CSV**",
     type="csv",
-    help="O CSV deve conter pelo menos 6 colunas numéricas com os números dos sorteios."
+    help="O arquivo deve ter pelo menos 6 colunas numéricas representando os números sorteados."
 )
 
 if uploaded_file is not None:
     try:
+        # Leitura do CSV
         df = pd.read_csv(uploaded_file)
-        df_padronizado = padronizar_df(df)
-
-        st.success(f"✅ Dados carregados e padronizados com sucesso! Total de sorteios: {len(df_padronizado):,}")
-
-        st.subheader("Visualização dos dados padronizados (primeiros 10 sorteios)")
+        
+        if df.empty:
+            st.error("O arquivo CSV está vazio.")
+            st.stop()
+        
+        # Padronização das colunas
+        df_padronizado, erro_padrao = padronizar_colunas(df)
+        if erro_padrao:
+            st.error(erro_padrao)
+            st.stop()
+        
+        st.success("✅ Arquivo carregado e padronizado com sucesso!")
+        
+        # Exibe preview do DataFrame
+        st.markdown("### 📋 Preview dos Dados Padronizados")
         st.dataframe(df_padronizado.head(10), use_container_width=True)
-
+        
+        # Botão para baixar modelo CSV (após upload)
         st.markdown("---")
-
-        # Criação das abas
-        tab_frequencia, tab_atraso, tab_quadrantes, tab_soma, tab_paridade, tab_primos, tab_altas_baixas = st.tabs([
-            "Frequência",
-            "Atraso",
-            "Quadrantes",
-            "Soma",
-            "Paridade",
-            "Primos",
-            "Altas/Baixas"
+        cols_modelo = [f'n{i+1}' for i in range(6)]
+        modelo_df = pd.DataFrame(
+            np.random.randint(1, 61, size=(10, 6)),
+            columns=cols_modelo
+        )
+        csv_modelo = modelo_df.to_csv(index=False).encode('utf-8')
+        
+        st.download_button(
+            label="📥 Baixar modelo CSV",
+            data=csv_modelo,
+            file_name="modelo_loteria.csv",
+            mime="text/csv",
+            help="Baixe este modelo, preencha com seus dados e faça upload."
+        )
+        
+        # Abas para as estatísticas
+        st.markdown("---")
+        tabs = st.tabs([
+            "📊 Frequência",
+            "⏱️ Atraso",
+            "🧩 Quadrantes",
+            "➕ Soma",
+            "⚖️ Paridade",
+            "🔢 Primos",
+            "📈 Altas/Baixas"
         ])
-
-        with tab_frequencia:
-            st.header("Frequência de Números")
-            df_freq = calcular_frequencia(df_padronizado)
-            st.dataframe(df_freq, use_container_width=True, hide_index=False)
-
-        with tab_atraso:
-            st.header("Atraso dos Números")
-            df_atraso = calcular_atraso(df_padronizado)
-            st.dataframe(df_atraso, use_container_width=True, hide_index=False)
-
-        with tab_quadrantes:
-            st.header("Análise de Quadrantes")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("Pares de Correlação")
-                df_correl = calcular_pares_correlacao(df_padronizado)
-                st.dataframe(df_correl, use_container_width=True, hide_index=False)
-            with col2:
-                st.subheader("Distribuição por Quadrante")
-                df_quad = calcular_distribuicao_quadrante(df_padronizado)
-                st.dataframe(df_quad, use_container_width=True, hide_index=False)
-
-        with tab_soma:
-            st.header("Estatísticas de Soma")
-            df_soma = calcular_estatisticas_soma(df_padronizado)
-            st.dataframe(df_soma, use_container_width=True, hide_index=False)
-
-        with tab_paridade:
-            st.header("Estatísticas de Paridade")
-            df_paridade = calcular_estatisticas_paridade(df_padronizado)
-            st.dataframe(df_paridade, use_container_width=True, hide_index=False)
-
-        with tab_primos:
-            st.header("Estatísticas de Números Primos")
-            df_primos = calcular_estatisticas_primos(df_padronizado)
-            st.dataframe(df_primos, use_container_width=True, hide_index=False)
-
-        with tab_altas_baixas:
-            st.header("Estatísticas de Altas/Baixas")
-            df_altas_baixas = calcular_estatisticas_altas_baixas(df_padronizado)
-            st.dataframe(df_altas_baixas, use_container_width=True, hide_index=False)
-
+        
+        with tabs[0]:  # Frequência
+            st.subheader("Frequência dos Números")
+            freq_data = calcular_frequencia(df_padronizado)
+            st.dataframe(freq_data, use_container_width=True)
+            
+        with tabs[1]:  # Atraso
+            st.subheader("Atraso dos Números")
+            atraso_data = calcular_atraso(df_padronizado)
+            st.dataframe(atraso_data, use_container_width=True)
+            
+        with tabs[2]:  # Quadrantes
+            st.subheader("Distribuição por Quadrantes")
+            quad_data = calcular_distribuicao_quadrante(df_padronizado)
+            st.dataframe(quad_data, use_container_width=True)
+            
+            st.subheader("Pares de Correlação")
+            corr_data = calcular_pares_correlacao(df_padronizado)
+            st.dataframe(corr_data, use_container_width=True)
+            
+        with tabs[3]:  # Soma
+            st.subheader("Estatísticas de Soma")
+            soma_data = calcular_estatisticas_soma(df_padronizado)
+            st.dataframe(soma_data, use_container_width=True)
+            
+        with tabs[4]:  # Paridade
+            st.subheader("Estatísticas de Paridade")
+            paridade_data = calcular_estatisticas_paridade(df_padronizado)
+            st.dataframe(paridade_data, use_container_width=True)
+            
+        with tabs[5]:  # Primos
+            st.subheader("Estatísticas de Números Primos")
+            primos_data = calcular_estatisticas_primos(df_padronizado)
+            st.dataframe(primos_data, use_container_width=True)
+            
+        with tabs[6]:  # Altas/Baixas
+            st.subheader("Estatísticas Altas / Baixas")
+            altas_baixas_data = calcular_estatisticas_altas_baixas(df_padronizado)
+            st.dataframe(altas_baixas_data, use_container_width=True)
+            
     except Exception as e:
         st.error(f"❌ Erro ao processar o arquivo: {str(e)}")
-        st.info("Verifique se o CSV está no formato correto.")
+        st.info("Verifique se o arquivo é um CSV válido com dados numéricos.")
 else:
-    st.info("👆 Por favor, faça o upload de um arquivo CSV para começar a análise.")
+    st.info("👆 **Carregue um arquivo CSV para iniciar a análise!**")
+    st.markdown("*Dica: Use o botão \"Baixar modelo CSV\" após o primeiro upload para obter um template.*")
 
 st.markdown("---")
-st.markdown("*Aplicação desenvolvida para análise de loterias. Compatível com Streamlit Cloud.*")
+st.markdown("*Desenvolvido para análise de loterias como Mega-Sena. Pronto para deploy no Streamlit Cloud.*")
