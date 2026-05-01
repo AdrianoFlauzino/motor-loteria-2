@@ -2,182 +2,208 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
-from collections import Counter, defaultdict
-import itertools
+import requests
 import json
-from datetime import datetime, timedelta
-import base64
+from datetime import datetime
+from itertools import combinations
+
+st.set_page_config(page_title="MultiLoterias Analyzer", page_icon="🎰", layout="wide")
 
 # Configurações das loterias
-LOTTERIES = {
-    'Mega-Sena': {'nums': list(range(1, 61)), 'pick': 6, 'extra': None, 'repeats': False, 'name': 'mega'},
-    'Quina': {'nums': list(range(1, 81)), 'pick': 5, 'extra': None, 'repeats': False, 'name': 'quina'},
-    'Lotofácil': {'nums': list(range(1, 26)), 'pick': 15, 'extra': None, 'repeats': False, 'name': 'lotofacil'},
-    'Dia de Sorte': {'nums': list(range(1, 32)), 'pick': 7, 'meses': list(range(1, 13)), 'extra': 'mes', 'repeats': False, 'name': 'diadesorte'},
-    'Super Sete': {'nums': list(range(10)), 'pick': 7, 'extra': None, 'repeats': True, 'name': 'super_sete'}
+configs = {
+    "Mega-Sena": {"lottery": "megasena", "max_num": 60, "bolas": 6, "max_concurso_start": 2800},
+    "Quina": {"lottery": "quina", "max_num": 80, "bolas": 5, "max_concurso_start": 6600},
+    "Lotofácil": {"lottery": "lotofacil", "max_num": 25, "bolas": 15, "max_concurso_start": 3200}
 }
 
-@st.cache_data
-def load_historical(lottery_name):
-    config = LOTTERIES[lottery_name]
-    data = []
-    for i in range(200):  # 200 concursos simulados
-        if config['repeats']:
-            draw = np.random.choice(config['nums'], config['pick'], replace=True).tolist()
-        else:
-            draw = sorted(np.random.choice(config['nums'], config['pick'], replace=False))
-        extra = None
-        if config.get('meses'):
-            extra = np.random.choice(config['meses'])
-        date = (datetime.now() - timedelta(days=i*3)).strftime('%d/%m/%Y')
-        data.append({
-            'Concurso': i+1,
-            'Data': date,
-            'Números': ' | '.join(map(str, draw)),
-            'Extra': extra if extra else ''
-        })
-    df = pd.DataFrame(data)
+@st.cache_data(ttl=3600)
+def fetch_results(lottery_key, max_concursos=500):
+    config = next(c for c in configs.values() if c["lottery"] == lottery_key)
+    base_url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/{lottery_key}/"
+    concurso = config["max_concurso_start"]
+    results = []
+    while len(results) < max_concursos and concurso > 0:
+        url = base_url + str(concurso)
+        try:
+            resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data and data.get('listaDezenas') and len(data['listaDezenas']) == config['bolas']:
+                    dezenas = sorted([int(d) for d in data['listaDezenas']])
+                    dt_str = data.get('dataApuracao', '')
+                    if dt_str:
+                        dt = datetime.strptime(dt_str, '%d/%m/%Y')
+                        results.append({'concurso': data.get('numero', concurso), 'data': dt, 'dezenas': dezenas})
+            concurso -= 1
+        except:
+            concurso -= 1
+    df = pd.DataFrame(results).sort_values('concurso', ascending=False).reset_index(drop=True)
     return df
 
-@st.cache_data
-def analyze_hot_cold(df, config):
-    all_numbers = []
-    for nums_str in df['Números'].str.split(' | '):
-        all_numbers.extend([int(n) for n in nums_str])
-    freq = Counter(all_numbers)
-    hot = pd.DataFrame(freq.most_common(10), columns=['Número', 'Frequência']).head(10)
-    cold = pd.DataFrame(freq.most_common()[-10:], columns=['Número', 'Frequência']).tail(10)
-    return hot, cold
+def hot_cold(df, max_num, period=None):
+    if period:
+        df = df.head(period)
+    freq = np.zeros(max_num)
+    for row in df.itertuples():
+        for num in row.dezenas:
+            freq[num - 1] += 1
+    hot_idx = np.argsort(freq)[-10:][::-1] + 1
+    cold_idx = np.argsort(freq)[:10] + 1
+    return list(hot_idx), list(cold_idx)
 
-def analyze_cooccurrence(df, config):
-    pairs_count = defaultdict(int)
-    for nums_str in df['Números'].str.split(' | '):
-        nums = [int(n) for n in nums_str]
-        for pair in itertools.combinations(sorted(nums), 2):
-            pairs_count[pair] += 1
-    top_pairs = sorted(pairs_count.items(), key=lambda x: x[1], reverse=True)[:20]
-    pair_df = pd.DataFrame(top_pairs, columns=['Par', 'Frequência'])
-    pair_df['Par'] = pair_df['Par'].apply(lambda p: f"{p[0]}-{p[1]}")
-    return pair_df
+def coocorrencia(df, max_num, top_n=20):
+    matrix = np.zeros((max_num, max_num))
+    for row in df.itertuples():
+        nums = row.dezenas
+        for i in range(len(nums)):
+            for j in range(i + 1, len(nums)):
+                matrix[nums[i] - 1][nums[j] - 1] += 1
+    pairs = []
+    for i in range(max_num):
+        for j in range(i + 1, max_num):
+            count = matrix[i][j]
+            if count > 0:
+                pairs.append((i + 1, j + 1, count))
+    pairs.sort(key=lambda x: x[2], reverse=True)
+    return pairs[:top_n]
 
-def monte_carlo_sim(config, n_sims=10000):
-    results = []
-    for _ in range(n_sims):
-        if config['repeats']:
-            sim = np.random.choice(config['nums'], config['pick'], replace=True)
-        else:
-            sim = sorted(np.random.choice(config['nums'], config['pick'], replace=False))
-        results.append(sim)
-    flat_sims = [num for draw in results for num in draw]
-    sim_freq = Counter(flat_sims)
-    return pd.DataFrame(sim_freq.most_common(20), columns=['Número', 'Frequência Simulada'])
+def get_sim_freq(df, n_sim, bolas, max_num):
+    total_bolas = len(df) * bolas
+    hist_freq = np.zeros(max_num)
+    for row in df.itertuples():
+        for num in row.dezenas:
+            hist_freq[num - 1] += 1
+    probs = hist_freq / total_bolas
+    probs[probs == 0] = 1e-6
+    probs = probs / probs.sum()
+    sim_freq = np.zeros(max_num)
+    for _ in range(n_sim):
+        draw = np.random.choice(range(1, max_num + 1), size=bolas, replace=False, p=probs)
+        for num in draw:
+            sim_freq[num - 1] += 1
+    return sim_freq
 
-def generate_combinations(config, max_combos=50):
-    base_set = sorted(np.random.choice(config['nums'], config['pick'] + 2, replace=False))
-    combos = list(itertools.combinations(base_set, config['pick']))[:max_combos]
-    return [list(c) for c in combos]
+# Sidebar para configurações
+st.sidebar.title("🎰 Configurações")
+dark_mode = st.sidebar.toggle("Tema Dark", value=False)
 
-def kpis(df, config):
-    all_sums = []
-    for nums_str in df['Números'].str.split(' | '):
-        nums = [int(n) for n in nums_str]
-        all_sums.append(sum(nums))
-    return {
-        'Média Soma': np.mean(all_sums),
-        'Mediana Soma': np.median(all_sums),
-        'Soma Máx': np.max(all_sums),
-        'Soma Mín': np.min(all_sums),
-        'Concursos': len(df)
-    }
-
-def csv_download(df, filename):
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
-    href = f'<a href="data:file/csv;base64,{b64}" download="{filename}.csv">Baixar CSV</a>'
-    return href
-
-st.markdown("""
-<style>
+if dark_mode:
+    st.markdown("""
+    <style>
     .stApp {
         background-color: #0e1117;
-        color: #fafafa;
+    }
+    .stMarkdown {
+        color: white;
     }
     .stMetric > label {
-        color: #fafafa;
+        color: white;
     }
-    h1, h2, h3 {
-        color: #fafafa;
+    .stMetric > div > div {
+        color: white;
     }
-</style>
-""", unsafe_allow_html=True)
+    section[data-testid="stSidebar"] div[role="button"] {
+        color: white;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-st.set_page_config(
-    page_title="MultiLoterias",
-    page_icon="🎰",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-st.title("🎰 MultiLoterias - Análises Avançadas")
-
-# Sidebar
-lottery = st.sidebar.selectbox("Selecione a Loteria:", list(LOTTERIES.keys()))
-config = LOTTERIES[lottery]
-
-# Load data
-df_hist = load_historical(lottery)
+st.title("🎰 MultiLoterias Analyzer")
+st.markdown("*Análise completa de Mega-Sena, Quina e Lotofácil com dados oficiais da Caixa.*")
 
 # Tabs
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Gerador", "Histórico", "Hot/Cold", "Coocorrência", "Monte Carlo", "Fechamentos", "KPIs"])
+tabs = st.tabs(list(configs.keys()))
 
-with tab1:
-    st.header("Gerador de Jogos")
-    if st.button("Gerar Jogo"):
-        if config['repeats']:
-            jogo = np.random.choice(config['nums'], config['pick'], replace=True).tolist()
+for name, tab in zip(configs.keys(), tabs):
+    with tab:
+        config = configs[name]
+        st.markdown(f"### {name}")
+        df = fetch_results(config['lottery'])
+        if df.empty:
+            st.error("❌ Não foi possível carregar os dados históricos. Tente novamente mais tarde.")
+            continue
+
+        # Último resultado
+        col1, col2, col3 = st.columns(3)
+        last = df.iloc[0]
+        with col1:
+            st.metric("Último Concurso", last.concurso)
+        with col2:
+            st.metric("Data", last.data.strftime("%d/%m/%Y"))
+        with col3:
+            st.metric("Dezenas", ', '.join(map(str, last.dezenas)))
+
+        # Resultados recentes
+        st.subheader("📊 Resultados Recentes")
+        recent_df = df.head(20).copy()
+        recent_df['data'] = recent_df['data'].dt.strftime("%d/%m/%Y")
+        recent_df['dezenas'] = recent_df['dezenas'].apply(lambda x: ', '.join(map(str, x)))
+        st.dataframe(recent_df[['concurso', 'data', 'dezenas']], use_container_width=True)
+
+        # Hot / Cold
+        period = st.slider("Período para Hot/Cold", 10, min(200, len(df)), 50)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("🔥 Números Quentes")
+            hot = hot_cold(df, config['max_num'] + 1, period)[0]
+            st.write(" | ".join(map(str, hot)))
+        with col2:
+            st.subheader("❄️ Números Frios")
+            cold = hot_cold(df, config['max_num'] + 1, period)[1]
+            st.write(" | ".join(map(str, cold)))
+
+        # Coocorrência
+        st.subheader("🔗 Coocorrências (Pares Mais Frequentes)")
+        pairs = coocorrencia(df, config['max_num'] + 1)
+        pair_df = pd.DataFrame(pairs, columns=['Num1', 'Num2', 'Frequência'])
+        fig_pairs = px.bar(pair_df, x='Num1', y='Frequência', color='Num2', title="Top 20 Pares")
+        st.plotly_chart(fig_pairs, use_container_width=True)
+
+        # KPIs
+        st.subheader("📈 KPIs")
+        kpi_data = df.to_dict('records')
+        sums = [sum(d['dezenas']) for d in kpi_data]
+        avg_sum = np.mean(sums)
+        min_sum, max_sum = min(sums), max(sums)
+        even_counts = [sum(1 for n in d['dezenas'] if n % 2 == 0) for d in kpi_data]
+        avg_even = np.mean(even_counts)
+        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+        with kpi_col1:
+            st.metric("Soma Média", f"{avg_sum:.1f}")
+        with kpi_col2:
+            st.metric("Soma Mín/Máx", f"{min_sum} / {max_sum}")
+        with kpi_col3:
+            st.metric("Pares Médios", f"{avg_even:.1f}")
+        with kpi_col4:
+            st.metric("Total Concursos", f"{len(df):,}")
+
+        # Monte Carlo
+        st.subheader("🎲 Simulação Monte Carlo")
+        n_sim = st.slider("Número de Simulações", 1000, 50000, 10000, 1000)
+        if st.button("Executar Simulação", key=f"mc_{name}"):
+            with st.spinner('Simulando...'):
+                sim_freq = get_sim_freq(df, n_sim, config['bolas'], config['max_num'])
+            fig_sim = px.bar(x=range(1, config['max_num'] + 1), y=sim_freq, title="Frequência Projetada")
+            st.plotly_chart(fig_sim, use_container_width=True)
+
+        # Fechamentos
+        st.subheader("⚙️ Gerador de Fechamentos")
+        user_nums = st.multiselect("Escolha seus números", options=range(1, config['max_num'] + 1),
+                                   max_selections=config['bolas'] + 5, key=f"nums_{name}")
+        if len(user_nums) >= config['bolas']:
+            bets = list(combinations(sorted(user_nums), config['bolas']))
+            st.success(f"✅ Geradas **{len(bets)}** apostas!")
+            custo = len(bets) * 5.00  # Aproximado R$5 por aposta
+            st.info(f"💰 Custo estimado: **R$ {custo:.2f}**")
+            if len(bets) <= 20:
+                for i, bet in enumerate(bets, 1):
+                    st.caption(f"Aposta {i}: {list(bet)}")
+            else:
+                st.write("**Primeiras 10 apostas:**")
+                for bet in bets[:10]:
+                    st.caption(list(bet))
         else:
-            jogo = sorted(np.random.choice(config['nums'], config['pick'], replace=False))
-        st.success(f"Jogo: {' | '.join(map(str, jogo))}")
+            st.warning(f"⚠️ Escolha pelo menos {config['bolas']} números (recomendado {config['bolas'] + 2} para fechamento).")
 
-with tab2:
-    st.header("Histórico de Sorteios")
-    st.dataframe(df_hist, use_container_width=True)
-
-with tab3:
-    st.header("Hot / Cold")
-    hot, cold = analyze_hot_cold(df_hist, config)
-    st.subheader("🔥 Hot")
-    st.dataframe(hot)
-    st.subheader("❄️ Cold")
-    st.dataframe(cold)
-
-with tab4:
-    st.header("Coocorrência")
-    cooc = analyze_cooccurrence(df_hist, config)
-    st.dataframe(cooc)
-    fig = px.bar(cooc, x="Par", y="Frequência")
-    st.plotly_chart(fig)
-
-with tab5:
-    st.header("Monte Carlo")
-    sims = monte_carlo_sim(config)
-    st.dataframe(sims)
-    fig = px.bar(sims, x="Número", y="Frequência Simulada")
-    st.plotly_chart(fig)
-
-with tab6:
-    st.header("Fechamentos")
-    num_combos = st.slider("Combos", 5, 50, 10)
-    combos = generate_combinations(config, max_combos=num_combos)
-    for i, c in enumerate(combos):
-        st.write(f"{i+1} - {' | '.join(map(str, c))}")
-
-with tab7:
-    st.header("KPIs")
-    k = kpis(df_hist, config)
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Concursos", k['Concursos'])
-    col2.metric("Média Soma", f"{k['Média Soma']:.2f}")
-    col3.metric("Mediana Soma", f"{k['Mediana Soma']:.2f}")
-    col4.metric("Range Soma", f"{k['Soma Mín']} - {k['Soma Máx']}")
+st.markdown("---")
+st.markdown("*Dados oficiais da Caixa Econômica Federal. Este app é para análise e entretenimento. Jogue com responsabilidade.*")
