@@ -1,183 +1,227 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import requests
 import plotly.express as px
 import plotly.graph_objects as go
-import requests
-from datetime import datetime
+from collections import Counter, defaultdict
 from itertools import combinations
+from datetime import datetime
 
-# ------------------------------
-# TEMA DARK (opcional)
-# ------------------------------
-st.set_page_config(page_title="MultiLoterias Analyzer", page_icon="🎰", layout="wide")
+st.set_page_config(page_title="MultiLoterias Enterprise", layout="wide")
 
+# ================================
+# THEME DARK
+# ================================
 st.markdown("""
 <style>
-    .stApp { background-color: #0e1117; color: #fafafa; }
-    .stMetric > label { color: #fafafa; }
-    h1, h2, h3 { color: #fafafa; }
+.stApp {background-color:#0e1117;color:#e8e8e8;}
+h1,h2,h3,h4,h5,p,span,div {color:#e8e8e8 !important;}
+.dataframe {color:black !important;}
 </style>
 """, unsafe_allow_html=True)
 
-# ------------------------------
-# CONFIGURAÇÃO CENTRAL DE LOTERIAS
-# ------------------------------
+# ================================
+# CONFIG Loterias
+# ================================
 LOTTERIES = {
-    "Mega-Sena": {"key": "megasena", "max": 60, "numbers": 6},
-    "Quina": {"key": "quina", "max": 80, "numbers": 5},
-    "Lotofácil": {"key": "lotofacil", "max": 25, "numbers": 15}
+    "megasena": {"name": "Mega-Sena", "max_concurso": 2950, "draw": 6, "nums": list(range(1,61))},
+    "quina": {"name": "Quina", "max_concurso": 6600, "draw": 5, "nums": list(range(1,81))},
+    "lotofacil": {"name": "Lotofácil", "max_concurso": 3200, "draw": 15, "nums": list(range(1,26))}
 }
 
-# ------------------------------
-# FUNÇÕES
-# ------------------------------
+API_BASE = "https://servicebus2.caixa.gov.br/portaldeloterias/api"
+
+# ================================
+# FETCH DATA
+# ================================
 @st.cache_data(ttl=3600)
-def fetch_latest(lottery_key):
-    """Busca o último concurso oficial"""
-    url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/{lottery_key}"
-    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-    if resp.status_code != 200:
-        return None
-    return resp.json()
+def fetch_caixa(lottery, limit=80):
+    conf = LOTTERIES[lottery]
+    max_c = conf["max_concurso"]
+    out=[]
+    while len(out)<limit and max_c>0:
+        url=f"{API_BASE}/{lottery}/{max_c}"
+        try:
+            r=requests.get(url,headers={'User-Agent':'Mozilla/5.0'},timeout=10)
+            if r.status_code==200:
+                j=r.json()
+                if "listaDezenas" in j and j["listaDezenas"]:
+                    nums=[int(x) for x in j["listaDezenas"]]
+                    if len(nums)==conf["draw"]:
+                        out.append({
+                            "concurso":j["numero"],
+                            "data":j["dataApuracao"],
+                            "nums":nums
+                        })
+        except:
+            pass
+        max_c-=1
+    return sorted(out,key=lambda x:x["concurso"], reverse=True)
 
-@st.cache_data(ttl=3600)
-def fetch_concurso(lottery_key, concurso):
-    """Busca concurso específico"""
-    url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/{lottery_key}/{concurso}"
-    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
-    if resp.status_code != 200:
-        return None
-    return resp.json()
+# ================================
+# ANALYTICS
+# ================================
+def analyze_hotcold(results, top=10):
+    all_nums=[n for r in results for n in r["nums"]]
+    freq=Counter(all_nums)
+    hot=freq.most_common(top)
+    cold=freq.most_common()[-top:]
+    return hot, cold, freq
 
-@st.cache_data(ttl=3600)
-def load_history(lottery_key, draws=50):
-    """Carrega histórico real dos últimos X concursos"""
-    latest = fetch_latest(lottery_key)
-    if not latest:
-        return []
-    last_n = latest.get("numero", 0)
-    history = []
-    for c in range(last_n, last_n - draws, -1):
-        data = fetch_concurso(lottery_key, c)
-        if data and data.get("listaDezenas"):
-            dezenas = [int(x) for x in data["listaDezenas"]]
-            history.append({
-                "concurso": data.get("numero"),
-                "data": data.get("dataApuracao"),
-                "dezenas": dezenas
-            })
-    return history
+def analyze_coocorrencia(results, top=20):
+    c=Counter()
+    for r in results:
+        nums=r["nums"]
+        for a,b in combinations(nums,2):
+            c[(a,b)]+=1
+    return c.most_common(top)
 
-def hot_cold(history, max_num):
-    """Retorna os 10 mais frequentes e 10 menos frequentes"""
-    freq = np.zeros(max_num)
-    for h in history:
-        for n in h["dezenas"]:
-            freq[n-1] += 1
-    hot = np.argsort(freq)[-10:][::-1] + 1
-    cold = np.argsort(freq)[:10] + 1
-    return list(hot), list(cold), freq
-
-def coocorrencia(history, max_num):
-    """Calcula pares mais frequentes"""
-    matrix = np.zeros((max_num, max_num))
-    for h in history:
-        nums = sorted(h["dezenas"])
-        for i in range(len(nums)):
-            for j in range(i+1, len(nums)):
-                matrix[nums[i]-1][nums[j]-1] += 1
-    pares = []
-    for i in range(max_num):
-        for j in range(i+1, max_num):
-            if matrix[i][j] > 0:
-                pares.append((i+1, j+1, matrix[i][j]))
-    pares.sort(key=lambda x: x[2], reverse=True)
-    return pares[:20]
-
-def monte_carlo(freq_hist, max_num, qt_numbers, sims=20000):
-    """Simulação ponderada pela frequência histórica"""
-    probs = freq_hist / freq_hist.sum()
-    results = np.zeros(max_num)
+def monte_carlo(results, lottery, sims=20000):
+    conf=LOTTERIES[lottery]
+    base_nums=conf["nums"]
+    all_nums=[n for r in results for n in r["nums"]]
+    hist=Counter(all_nums)
+    p=np.array([hist.get(n,1) for n in base_nums],dtype=float)
+    p/=p.sum()
+    simc=Counter()
     for _ in range(sims):
-        draw = np.random.choice(range(1, max_num+1), qt_numbers, replace=False, p=probs)
-        for d in draw:
-            results[d-1] += 1
-    return results
+        d=np.random.choice(base_nums,size=conf["draw"],replace=False,p=p)
+        for n in d: simc[n]+=1
+    return simc.most_common(20)
 
-# ------------------------------
-# INTERFACE
-# ------------------------------
-st.title("🎰 MultiLoterias Analyzer — Versão Revisada e Estável")
+def kpis(results):
+    sums=[sum(r["nums"]) for r in results]
+    even=[sum(1 for x in r["nums"] if x%2==0) for r in results]
+    return {
+        "mean_sum":np.mean(sums),
+        "min_sum":min(sums),
+        "max_sum":max(sums),
+        "mean_even":np.mean(even),
+        "count":len(results)
+    }
 
-choice = st.sidebar.selectbox("Selecione a loteria", list(LOTTERIES.keys()))
-cfg = LOTTERIES[choice]
+def generate_fechamentos(user_nums, qtd, limit=50):
+    user_nums=sorted(list(user_nums))
+    c=list(combinations(user_nums,qtd))
+    return c[:limit] if len(c)>limit else c
 
-draws = st.sidebar.slider("Concursos históricos", 10, 200, 50)
-history = load_history(cfg["key"], draws)
+# ================================
+# UI
+# ================================
+st.title("🎰 MultiLoterias Enterprise – Dashboards Premium")
+st.markdown("Análises profissionais com dados oficiais da Caixa Econômica Federal.")
 
-if not history:
-    st.error("Não foi possível carregar dados da Caixa.")
+lottery=st.sidebar.selectbox(
+    "Selecione a loteria:",
+    list(LOTTERIES.keys()),
+    format_func=lambda x:LOTTERIES[x]["name"]
+)
+
+limit=st.sidebar.slider("Concursos analisados",20,200,80)
+refresh=st.sidebar.button("🔄 Atualizar")
+
+if refresh:
+    st.cache_data.clear()
+    st.rerun()
+
+results=fetch_caixa(lottery,limit)
+if not results:
+    st.error("Falha ao obter dados da Caixa.")
     st.stop()
 
-latest = history[0]
-st.subheader(f"📌 Último concurso ({choice})")
-st.write(f"**Concurso:** {latest['concurso']}")
-st.write(f"**Data:** {latest['data']}")
-st.write(f"**Dezenas:** {', '.join(map(str, latest['dezenas']))}")
+conf=LOTTERIES[lottery]
+last=results[0]
 
-# ------------------------------
+# ================================
+# HEADER
+# ================================
+col1,col2,col3=st.columns(3)
+col1.metric("Último concurso",last["concurso"])
+col2.metric("Data",last["data"])
+col3.metric("Números",", ".join(map(str,last["nums"])))
+
+# ================================
+# TABS
+# ================================
+tab1,tab2,tab3,tab4,tab5=st.tabs([
+    "Histórico",
+    "Hot/Cold",
+    "Coocorrência",
+    "Monte Carlo",
+    "Fechamentos"
+])
+
+# ================================
+# HISTÓRICO
+# ================================
+with tab1:
+    st.subheader("📋 Histórico recente")
+    df=pd.DataFrame([{
+        "Concurso":r["concurso"],
+        "Data":r["data"],
+        "Dezenas":", ".join(map(str,r["nums"]))
+    } for r in results])
+    st.dataframe(df,use_container_width=True)
+
+    st.subheader("📈 KPIs")
+    k=kpis(results)
+    c1,c2,c3,c4,c5=st.columns(5)
+    c1.metric("Concursos",k["count"])
+    c2.metric("Soma média",f"{k['mean_sum']:.1f}")
+    c3.metric("Soma min",k["min_sum"])
+    c4.metric("Soma max",k["max_sum"])
+    c5.metric("Pares médios",f"{k['mean_even']:.1f}")
+
+# ================================
 # HOT/COLD
-# ------------------------------
-st.markdown("## 🔥 Hot / ❄️ Cold Numbers")
-hot, cold, freq_hist = hot_cold(history, cfg["max"])
+# ================================
+with tab2:
+    hot,cold,freq=analyze_hotcold(results)
+    st.subheader("🔥 Hot")
+    st.write(hot)
+    st.subheader("❄️ Cold")
+    st.write(cold)
 
-col1, col2 = st.columns(2)
-with col1:
-    st.write("🔥 **Mais frequentes:**")
-    st.write(" | ".join(map(str, hot)))
-with col2:
-    st.write("❄️ **Menos frequentes:**")
-    st.write(" | ".join(map(str, cold)))
+    freq_df=pd.DataFrame({"Número":list(freq.keys()),"Frequência":list(freq.values())})
+    freq_df=freq_df.sort_values("Número")
+    fig=px.bar(freq_df,x="Número",y="Frequência",title="Frequência geral")
+    st.plotly_chart(fig,use_container_width=True)
 
-fig_freq = px.bar(x=list(range(1, cfg["max"]+1)), y=freq_hist, title="Frequência Histórica")
-st.plotly_chart(fig_freq, use_container_width=True)
-
-# ------------------------------
+# ================================
 # COOCORRÊNCIA
-# ------------------------------
-st.markdown("## 🔗 Coocorrência de Pares")
-pares = coocorrencia(history, cfg["max"])
-df_pares = pd.DataFrame(pares, columns=["Num1", "Num2", "Frequência"])
-st.dataframe(df_pares, use_container_width=True)
+# ================================
+with tab3:
+    st.subheader("🔗 Pares mais frequentes")
+    pairs=analyze_coocorrencia(results)
+    dfp=pd.DataFrame([{"Par":f"{a}-{b}","Frequência":c} for (a,b),c in pairs])
+    st.dataframe(dfp,use_container_width=True)
+    fig=px.bar(dfp,x="Par",y="Frequência")
+    st.plotly_chart(fig,use_container_width=True)
 
-# ------------------------------
+# ================================
 # MONTE CARLO
-# ------------------------------
-st.markdown("## 🎲 Simulação Monte Carlo")
-sims = st.slider("Simulações", 5000, 50000, 20000, 5000)
-sim_freq = monte_carlo(freq_hist, cfg["max"], cfg["numbers"], sims)
+# ================================
+with tab4:
+    st.subheader("🎲 Simulação Monte Carlo")
+    sims=st.slider("Simulações",5000,50000,20000,5000)
+    if st.button("Executar"):
+        m=monte_carlo(results,lottery,sims)
+        mdf=pd.DataFrame(m,columns=["Número","Frequência"])
+        fig=px.bar(mdf,x="Número",y="Frequência",title="Frequência projetada")
+        st.plotly_chart(fig,use_container_width=True)
+        st.dataframe(mdf)
 
-fig_sim = px.bar(x=list(range(1, cfg["max"]+1)), y=sim_freq, title="Monte Carlo — Frequência Projetada")
-st.plotly_chart(fig_sim, use_container_width=True)
-
-# ------------------------------
+# ================================
 # FECHAMENTOS
-# ------------------------------
-st.markdown("## 🧩 Fechamentos")
-nums_escolhidos = st.multiselect("Escolha números", list(range(1, cfg["max"]+1)))
-if len(nums_escolhidos) >= cfg["numbers"]:
-    combs = list(combinations(sorted(nums_escolhidos), cfg["numbers"]))
-    st.write(f"Total de combinações: {len(combs)}")
-    if len(combs) <= 50:
-        for c in combs:
-            st.write(c)
+# ================================
+with tab5:
+    st.subheader("⚙️ Fechamentos combinatórios")
+    sel=st.multiselect("Escolha números",conf["nums"])
+    if len(sel)>=conf["draw"]:
+        combos=generate_fechamentos(sel,conf["draw"])
+        st.success(f"{len(combos)} apostas geradas")
+        for i,cmb in enumerate(combos):
+            st.caption(f"Aposta {i+1}: {cmb}")
     else:
-        st.write("Mostrando apenas as 50 primeiras:")
-        for c in combs[:50]:
-            st.write(c)
-else:
-    st.info(f"Selecione pelo menos {cfg['numbers']} números.")
-
-st.markdown("---")
-st.caption("Dados oficiais da Caixa Econômica Federal. App revisado e otimizado.")
+        st.info(f"Selecione pelo menos {conf['draw']} números.")
