@@ -87,12 +87,12 @@ total_combos = math.comb(MAX_NUM, N_NUMS)
 
 # Tabs
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "📊 Estatísticas", 
-    "🎲 Monte Carlo", 
-    "💰 Financeiro", 
-    "🔒 Fechamentos", 
-    "📈 KPIs", 
-    "🏛️ Painel Executivo", 
+    "📊 Estatísticas",
+    "🎲 Monte Carlo",
+    "💰 Financeiro",
+    "🔒 Fechamentos",
+    "📈 KPIs",
+    "🏛️ Painel Executivo",
     "📋 Excel"
 ])
 
@@ -203,7 +203,7 @@ with tab5:
 with tab6:
     st.header("🏛️ Painel Executivo Dark Trader")
 
-    fig = make_subplots(
+    fig = make_blots = make_subplots(
         rows=2, cols=2,
         subplot_titles=("Hot Numbers", "Cold Numbers", "Freq Histórica", "Freq Monte Carlo"),
         specs=[[{}, {}], [{"secondary_y": False}, {"secondary_y": False}]]
@@ -212,8 +212,21 @@ with tab6:
     fig.add_trace(go.Bar(x=hot, y=hist_freq[hot-1], name="Hot", marker_color="red"), row=1, col=1)
     fig.add_trace(go.Bar(x=cold, y=hist_freq[cold-1], name="Cold", marker_color="blue"), row=1, col=2)
 
-    fig.add_trace(go.Scatter(x=range(1, MAX_NUM+1), y=hist_freq, mode="lines", name="Hist", line=dict(color="orange")), row=2, col=1)
-    fig.add_trace(go.Scatter(x=range(1, MAX_NUM+1), y=mc_freq, mode="lines", name="MC", line=dict(color="green")), row=2, col=2)
+    fig.add_trace(go.Scatter(
+        x=list(range(1, MAX_NUM+1)),
+        y=hist_freq,
+        mode="lines",
+        name="Hist",
+        line=dict(color="orange")
+    ), row=2, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=list(range(1, MAX_NUM+1)),
+        y=mc_freq,
+        mode="lines",
+        name="MC",
+        line=dict(color="green")
+    ), row=2, col=2)
 
     fig.update_layout(height=700, template="plotly_dark", showlegend=True)
     st.plotly_chart(fig, use_container_width=True)
@@ -224,6 +237,7 @@ with tab7:
     output = io.BytesIO()
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
+
         historical_df.to_excel(writer, sheet_name="Historico", index=False)
 
         freq_df = pd.DataFrame({
