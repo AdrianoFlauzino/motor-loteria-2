@@ -1,179 +1,183 @@
-## requirements.txt
-streamlit>=1.28.0
-pandas>=2.0.0
-numpy>=1.24.0
-plotly>=5.15.0
-requests>=2.31.0
-
-## app_enterprise.py
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import requests
-import json
-from datetime import datetime, timedelta
+from datetime import datetime
+from itertools import combinations
+
+# ------------------------------
+# TEMA DARK (opcional)
+# ------------------------------
+st.set_page_config(page_title="MultiLoterias Analyzer", page_icon="🎰", layout="wide")
+
+st.markdown("""
+<style>
+    .stApp { background-color: #0e1117; color: #fafafa; }
+    .stMetric > label { color: #fafafa; }
+    h1, h2, h3 { color: #fafafa; }
+</style>
+""", unsafe_allow_html=True)
+
+# ------------------------------
+# CONFIGURAÇÃO CENTRAL DE LOTERIAS
+# ------------------------------
+LOTTERIES = {
+    "Mega-Sena": {"key": "megasena", "max": 60, "numbers": 6},
+    "Quina": {"key": "quina", "max": 80, "numbers": 5},
+    "Lotofácil": {"key": "lotofacil", "max": 25, "numbers": 15}
+}
+
+# ------------------------------
+# FUNÇÕES
+# ------------------------------
+@st.cache_data(ttl=3600)
+def fetch_latest(lottery_key):
+    """Busca o último concurso oficial"""
+    url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/{lottery_key}"
+    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+    if resp.status_code != 200:
+        return None
+    return resp.json()
 
 @st.cache_data(ttl=3600)
-def fetch_lottery_data(lottery, concurso=None):
-    base_url = "https://servicebus2.caixa.gov.br/portaldeloterias/api"
-    if concurso:
-        url = f"{base_url}/{lottery}/{concurso}"
-    else:
-        url = f"{base_url}/{lottery}"
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        st.error(f"Erro ao buscar dados de {lottery}: {str(e)}")
+def fetch_concurso(lottery_key, concurso):
+    """Busca concurso específico"""
+    url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/{lottery_key}/{concurso}"
+    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+    if resp.status_code != 200:
         return None
+    return resp.json()
 
-@st.cache_data(ttl=86400)
-def get_lottery_history(lottery, n_draws=20):
-    latest = fetch_lottery_data(lottery)
+@st.cache_data(ttl=3600)
+def load_history(lottery_key, draws=50):
+    """Carrega histórico real dos últimos X concursos"""
+    latest = fetch_latest(lottery_key)
     if not latest:
         return []
-    last_concurso = latest.get('numero', 0)
+    last_n = latest.get("numero", 0)
     history = []
-    start_concurso = max(1, last_concurso - n_draws + 1)
-    for num in range(start_concurso, last_concurso + 1):
-        data = fetch_lottery_data(lottery, num)
-        if data:
-            history.append(data)
-    return history[::-1]  # Mais recente primeiro
+    for c in range(last_n, last_n - draws, -1):
+        data = fetch_concurso(lottery_key, c)
+        if data and data.get("listaDezenas"):
+            dezenas = [int(x) for x in data["listaDezenas"]]
+            history.append({
+                "concurso": data.get("numero"),
+                "data": data.get("dataApuracao"),
+                "dezenas": dezenas
+            })
+    return history
 
-@st.cache_data
-def parse_numbers(data):
-    if not data:
-        return []
-    dezenas_str = data.get('listaDezenas', '')
-    return [int(d.strip()) for d in dezenas_str.split(',') if d.strip().isdigit()]
+def hot_cold(history, max_num):
+    """Retorna os 10 mais frequentes e 10 menos frequentes"""
+    freq = np.zeros(max_num)
+    for h in history:
+        for n in h["dezenas"]:
+            freq[n-1] += 1
+    hot = np.argsort(freq)[-10:][::-1] + 1
+    cold = np.argsort(freq)[:10] + 1
+    return list(hot), list(cold), freq
 
-def create_freq_df(history, lottery):
-    all_numbers = []
-    for draw in history:
-        nums = parse_numbers(draw)
-        all_numbers.extend(nums)
-    freq = pd.Series(all_numbers).value_counts().sort_index().reset_index()
-    freq.columns = ['numero', 'frequencia']
-    return freq
+def coocorrencia(history, max_num):
+    """Calcula pares mais frequentes"""
+    matrix = np.zeros((max_num, max_num))
+    for h in history:
+        nums = sorted(h["dezenas"])
+        for i in range(len(nums)):
+            for j in range(i+1, len(nums)):
+                matrix[nums[i]-1][nums[j]-1] += 1
+    pares = []
+    for i in range(max_num):
+        for j in range(i+1, max_num):
+            if matrix[i][j] > 0:
+                pares.append((i+1, j+1, matrix[i][j]))
+    pares.sort(key=lambda x: x[2], reverse=True)
+    return pares[:20]
 
-def get_max_ball(lottery):
-    max_balls = {'megasena': 60, 'quina': 80, 'lotofacil': 25, 'lotomania': 100,
-                 'duplasena': 50, 'timemania': 80, 'diadesorte': 31}
-    return max_balls.get(lottery, 100)
+def monte_carlo(freq_hist, max_num, qt_numbers, sims=20000):
+    """Simulação ponderada pela frequência histórica"""
+    probs = freq_hist / freq_hist.sum()
+    results = np.zeros(max_num)
+    for _ in range(sims):
+        draw = np.random.choice(range(1, max_num+1), qt_numbers, replace=False, p=probs)
+        for d in draw:
+            results[d-1] += 1
+    return results
 
-st.set_page_config(
-    page_title="MultiLoterias Enterprise",
-    page_icon="🎰",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# ------------------------------
+# INTERFACE
+# ------------------------------
+st.title("🎰 MultiLoterias Analyzer — Versão Revisada e Estável")
 
-st.title("🎰 MultiLoterias Enterprise - Dashboards Premium")
+choice = st.sidebar.selectbox("Selecione a loteria", list(LOTTERIES.keys()))
+cfg = LOTTERIES[choice]
 
-lotteries = ['megasena', 'quina', 'lotofacil', 'lotomania', 'duplasena', 'timemania', 'diadesorte']
+draws = st.sidebar.slider("Concursos históricos", 10, 200, 50)
+history = load_history(cfg["key"], draws)
 
-# Sidebar
-st.sidebar.header("Configurações")
-selected_lottery = st.sidebar.selectbox("Selecione a Loteria", lotteries, index=0)
-n_draws = st.sidebar.slider("Nº de Concursos Históricos", 5, 50, 20)
-refresh = st.sidebar.button("🔄 Atualizar Dados")
-if refresh:
-    st.cache_data.clear()
-    st.rerun()
+if not history:
+    st.error("Não foi possível carregar dados da Caixa.")
+    st.stop()
 
-# Tabs
-if 'tab1' not in st.session_state:
-    st.session_state.tab1, st.session_state.tab2 = st.tabs(["📊 Visão Geral", f"{selected_lottery.upper()} - Dashboard Executivo"])
+latest = history[0]
+st.subheader(f"📌 Último concurso ({choice})")
+st.write(f"**Concurso:** {latest['concurso']}")
+st.write(f"**Data:** {latest['data']}")
+st.write(f"**Dezenas:** {', '.join(map(str, latest['dezenas']))}")
+
+# ------------------------------
+# HOT/COLD
+# ------------------------------
+st.markdown("## 🔥 Hot / ❄️ Cold Numbers")
+hot, cold, freq_hist = hot_cold(history, cfg["max"])
+
+col1, col2 = st.columns(2)
+with col1:
+    st.write("🔥 **Mais frequentes:**")
+    st.write(" | ".join(map(str, hot)))
+with col2:
+    st.write("❄️ **Menos frequentes:**")
+    st.write(" | ".join(map(str, cold)))
+
+fig_freq = px.bar(x=list(range(1, cfg["max"]+1)), y=freq_hist, title="Frequência Histórica")
+st.plotly_chart(fig_freq, use_container_width=True)
+
+# ------------------------------
+# COOCORRÊNCIA
+# ------------------------------
+st.markdown("## 🔗 Coocorrência de Pares")
+pares = coocorrencia(history, cfg["max"])
+df_pares = pd.DataFrame(pares, columns=["Num1", "Num2", "Frequência"])
+st.dataframe(df_pares, use_container_width=True)
+
+# ------------------------------
+# MONTE CARLO
+# ------------------------------
+st.markdown("## 🎲 Simulação Monte Carlo")
+sims = st.slider("Simulações", 5000, 50000, 20000, 5000)
+sim_freq = monte_carlo(freq_hist, cfg["max"], cfg["numbers"], sims)
+
+fig_sim = px.bar(x=list(range(1, cfg["max"]+1)), y=sim_freq, title="Monte Carlo — Frequência Projetada")
+st.plotly_chart(fig_sim, use_container_width=True)
+
+# ------------------------------
+# FECHAMENTOS
+# ------------------------------
+st.markdown("## 🧩 Fechamentos")
+nums_escolhidos = st.multiselect("Escolha números", list(range(1, cfg["max"]+1)))
+if len(nums_escolhidos) >= cfg["numbers"]:
+    combs = list(combinations(sorted(nums_escolhidos), cfg["numbers"]))
+    st.write(f"Total de combinações: {len(combs)}")
+    if len(combs) <= 50:
+        for c in combs:
+            st.write(c)
+    else:
+        st.write("Mostrando apenas as 50 primeiras:")
+        for c in combs[:50]:
+            st.write(c)
 else:
-    st.session_state.tab1, st.session_state.tab2 = st.tabs(["📊 Visão Geral", f"{selected_lottery.upper()} - Dashboard Executivo"])
+    st.info(f"Selecione pelo menos {cfg['numbers']} números.")
 
-with st.session_state.tab1:
-    st.header("Visão Geral - Últimos Resultados")
-    cols = st.columns(len(lotteries))
-    for i, lot in enumerate(lotteries):
-        with cols[i]:
-            latest = fetch_lottery_data(lot)
-            if latest:
-                nums = parse_numbers(latest)
-                st.metric(f"{lot.title()}", f"Nº {latest.get('numero', 'N/A')}", delta=latest.get('dataApuracao', ''))
-                st.caption(', '.join(map(str, nums[:6])))
-                estimativa = latest.get('estimativaProximoConcurso', 'N/A')
-                if estimativa != 'N/A':
-                    st.caption(f"Próximo: R$ {estimativa:,.0f}")
-
-with st.session_state.tab2:
-    st.header(f"{selected_lottery.upper()} - Análises Avançadas")
-    
-    # KPIs
-    col1, col2, col3, col4 = st.columns(4)
-    history = get_lottery_history(selected_lottery, n_draws)
-    if history:
-        latest = history[0]
-        nums = parse_numbers(latest)
-        with col1:
-            st.metric("Último Concurso", latest['numero'])
-        with col2:
-            st.metric("Data", latest['dataApuracao'])
-        with col3:
-            st.metric("Números", ', '.join(map(str, nums)))
-        with col4:
-            estimativa = latest.get('estimativaProximoConcurso', 0)
-            st.metric("Próximo Prêmio", f"R$ {estimativa:,.0f}" if estimativa else "N/A")
-        
-        # Tabela Histórico
-        st.subheader("📋 Histórico Recente")
-        df_hist = pd.DataFrame([{
-            'Concurso': d['numero'],
-            'Data': d['dataApuracao'],
-            'Dezenas': ', '.join(map(str, parse_numbers(d))),
-            'Arrecadacao': d.get('arrecadacaoTotal', 'N/A'),
-            'Premiacao': d.get('valorPremio', [{}])[0].get('valorPremio', 'N/A') if d.get('valorPremio') else 'N/A'
-        } for d in history[:10]])
-        st.dataframe(df_hist, use_container_width=True, height=300)
-        
-        # CSV Download
-        csv = df_hist.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download CSV", csv, f"{selected_lottery}_historico.csv", "text/csv")
-        
-        # Gráficos
-        st.subheader("📈 Visualizações Executivas")
-        
-        col_a, col_b = st.columns(2)
-        
-        with col_a:
-            # Frequência de Números
-            freq_df = create_freq_df(history, selected_lottery)
-            max_ball = get_max_ball(selected_lottery)
-            fig_freq = px.bar(freq_df, x='numero', y='frequencia', title="Frequência de Números",
-                              range_x=[1, max_ball])
-            fig_freq.update_layout(showlegend=False)
-            st.plotly_chart(fig_freq, use_container_width=True)
-            
-            # Números Mais/Menos Frequentes
-            hot = freq_df.nlargest(5, 'frequencia')
-            cold = freq_df.nsmallest(5, 'frequencia')
-            st.subheader("🔥 Números Quentes / ❄️ Frios")
-            col_h, col_c = st.columns(2)
-            with col_h:
-                st.metric("Quentes", hot['numero'].tolist())
-            with col_c:
-                st.metric("Frios", cold['numero'].tolist())
-        
-        with col_b:
-            # Soma das Dezenas ao Longo do Tempo
-            sums = [sum(parse_numbers(d)) for d in history]
-            fig_sum = px.line(x=range(len(sums)), y=sums, title="Evolução da Soma das Dezenas")
-            st.plotly_chart(fig_sum, use_container_width=True)
-            
-            # Distribuição por Paridade
-            all_nums = [n for d in history for n in parse_numbers(d)]
-            parity = ['Par' if n % 2 == 0 else 'Ímpar' for n in all_nums]
-            fig_par = px.pie(values=parity, names=parity, title="Distribuição Par/Ímpar")
-            st.plotly_chart(fig_par, use_container_width=True)
-
-st.sidebar.markdown("---")
-st.sidebar.caption("App Enterprise | Dados da Caixa Econômica Federal")
+st.markdown("---")
+st.caption("Dados oficiais da Caixa Econômica Federal. App revisado e otimizado.")
