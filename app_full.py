@@ -3,222 +3,177 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.io as pio
+from itertools import combinations
 
-# 
+# ==========================================
 # TEMA BRANCO EXECUTIVO
-# 
-
+# ==========================================
 def apply_white_theme():
     pio.templates.default = "plotly_white"
     st.markdown('''
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-    * {
-        font-family: 'Inter', 'Segoe UI', sans-serif !important;
-    }
-    .stApp {
-        background-color: #FFFFFF;
-    }
-    .main .block-container {
-        padding-top: 3rem;
-        padding-bottom: 3rem;
-        padding-left: 3rem;
-        padding-right: 3rem;
-        max-width: 1400px;
-        margin: auto;
-    }
-    [data-testid="stSidebar"] > div:first-child {
-        background-color: #FFFFFF;
-    }
-    h1, h2, h3, h4 {
-        color: #0A2342 !important;
-    }
-    .stMarkdown p, .stText {
-        color: #333333;
-    }
-    [data-testid="metric-container"] .stMetricValue {
-        font-size: 3rem !important;
-        font-weight: 700 !important;
-        color: #0066CC !important;
-    }
-    [data-testid="metric-container"] .stMetricLabel {
-        font-size: 1.0rem !important;
-        color: #333333 !important;
-    }
-    hr {
-        border: none;
-        height: 1px;
-        background-color: #E0E0E0;
-        margin: 2.5rem 0;
-    }
-    .stButton > button {
-        background-color: #0066CC;
-        color: white;
-        border-radius: 6px;
-        font-weight: 500;
-    }
-    .stButton > button:hover {
-        background-color: #0052A3;
-    }
+    .stApp { background-color: #FFFFFF; }
+    h1, h2, h3 { color: #0A2342 !important; }
+    .stMarkdown p, .stText { color: #333333; }
+    [data-testid="metric-container"] .stMetricValue { color: #0066CC !important; font-size: 2.5rem !important; font-weight: 700 !important; }
+    [data-testid="metric-container"] .stMetricLabel { color: #333333 !important; font-size: 1rem !important; }
+    .stButton > button { background-color: #0066CC; color: white; border-radius: 6px; font-weight: 500; }
+    .stButton > button:hover { background-color: #0052A3; }
     </style>
     ''', unsafe_allow_html=True)
 
-# 
+# ==========================================
 # TEMA AZUL CORPORATIVO
-# 
-
+# ==========================================
 def apply_blue_theme():
     pio.templates.default = "plotly_dark"
     st.markdown('''
     <style>
-    .stApp {
-        background-color: #001F3F;
-    }
-    h1, h2 {
-        color: #00A6FB !important;
-    }
-    .stMarkdown p {
-        color: #BBE1FA !important;
-    }
-    [data-testid="metric-container"] .stMetricValue {
-        color: #00A6FB !important;
-        font-size: 3rem !important;
-        font-weight: 700 !important;
-    }
-    [data-testid="metric-container"] .stMetricLabel {
-        color: #D0E8FF !important;
-    }
-    .stButton > button {
-        background-color: #003B73 !important;
-        color: white !important;
-        border-radius: 6px;
-    }
-    .stButton > button:hover {
-        background-color: #00A6FB !important;
-    }
+    .stApp { background-color: #001F3F; }
+    h1, h2, h3 { color: #00A6FB !important; }
+    .stMarkdown p, .stText { color: #BBE1FA !important; }
+    [data-testid="metric-container"] .stMetricValue { color: #00A6FB !important; font-size: 2.5rem !important; font-weight: 700 !important; }
+    [data-testid="metric-container"] .stMetricLabel { color: #D0E8FF !important; font-size: 1rem !important; }
+    .stButton > button { background-color: #003B73 !important; color: white !important; border-radius: 6px; }
+    .stButton > button:hover { background-color: #00A6FB !important; }
     </style>
     ''', unsafe_allow_html=True)
 
-# 
-# DATA LAYER
-# 
+# ==========================================
+# DATA LAYER: INGESTÃO DIA DE SORTE
+# ==========================================
+@st.cache_data
+def carregar_dados_dia_de_sorte():
+    """Gera dados simulados do Dia de Sorte (Substituir por API/CSV real)"""
+    np.random.seed(42)
+    n_concursos = 500
+    sorteios = []
+    for _ in range(n_concursos):
+        dezenas = np.sort(np.random.choice(range(1, 32), 7, replace=False))
+        sorteios.append(dezenas)
+        
+    df_sorte = pd.DataFrame(sorteios, columns=[f"Bola_{i+1}" for i in range(7)])
+    df_sorte.index.name = "Concurso"
+    df_sorte.index += 1
+    return df_sorte
 
-def load_sample_data():
-    dates = pd.date_range("2024-01-01", periods=100)
-    df = pd.DataFrame({
-        "data": dates,
-        "receita": np.random.randn(100).cumsum() + 1000,
-        "vendas": np.random.randint(50, 200, 100),
-        "clientes": np.random.randint(100, 500, 100),
-        "regiao": np.random.choice(
-            ["Sul", "Sudeste", "Nordeste", "Norte", "Centro-Oeste"], 100
-        )
-    })
-    return df
+# ==========================================
+# DOMAIN LAYER: MOTOR MATEMÁTICO
+# ==========================================
+@st.cache_data
+def calcular_matriz_coocorrencia(df_sorte, universo=31):
+    matriz = np.zeros((universo + 1, universo + 1), dtype=int)
+    for dezenas in df_sorte.values:
+        pares = list(combinations(dezenas, 2))
+        for n1, n2 in pares:
+            matriz[n1, n2] += 1
+            matriz[n2, n1] += 1
+    return matriz
 
-# 
-# UI LAYER — BRANCO
-# 
+@st.cache_data
+def monte_carlo_dia_de_sorte(n_concursos, n_simulacoes=200, universo=31, dezenas_por_sorteio=7):
+    matriz_esperada = np.zeros((universo + 1, universo + 1), dtype=float)
+    for _ in range(n_simulacoes):
+        matriz_sim = np.zeros((universo + 1, universo + 1), dtype=int)
+        for _ in range(n_concursos):
+            sorteio_sim = np.random.choice(range(1, universo + 1), dezenas_por_sorteio, replace=False)
+            pares_sim = list(combinations(np.sort(sorteio_sim), 2))
+            for n1, n2 in pares_sim:
+                matriz_sim[n1, n2] += 1
+                matriz_sim[n2, n1] += 1
+        matriz_esperada += matriz_sim
+    matriz_esperada /= n_simulacoes
+    return matriz_esperada
 
-def render_ui_white(package):
-    apply_white_theme()
-    st.title("📊 Dashboard Executivo — Tema Branco")
+@st.cache_data
+def analisar_dia_de_sorte(df_sorte):
+    n_concursos = len(df_sorte)
+    matriz_real = calcular_matriz_coocorrencia(df_sorte, universo=31)
+    matriz_esperada = monte_carlo_dia_de_sorte(n_concursos, n_simulacoes=100) # 100 para agilizar UI
+    matriz_esperada_segura = np.where(matriz_esperada == 0, 1, matriz_esperada)
+    matriz_forca = matriz_real / matriz_esperada_segura
+    return matriz_real, matriz_esperada, matriz_forca
 
-    df = load_sample_data()
+def preparar_df_pares(matriz_real, matriz_esperada, matriz_forca):
+    pares = []
+    for i in range(1, 32):
+        for j in range(i + 1, 32):
+            if matriz_real[i, j] > 0:
+                pares.append({
+                    "Par": f"{i:02d} - {j:02d}",
+                    "Ocorrências (Real)": matriz_real[i, j],
+                    "Esperado (Monte Carlo)": round(matriz_esperada[i, j], 2),
+                    "Força (Real/Esperado)": round(matriz_forca[i, j], 2)
+                })
+    return pd.DataFrame(pares).sort_values(by="Força (Real/Esperado)", ascending=False)
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Receita Total", f"R$ {df['receita'].sum():,.0f}")
-    col2.metric("Vendas", f"{df['vendas'].sum():,}")
-    col3.metric("Clientes", f"{df['clientes'].sum():,}")
-    col4.metric("Média Receita", f"R$ {df['receita'].mean():,.0f}")
-
-    st.sidebar.header("Filtros")
-    regioes = st.sidebar.multiselect(
-        "Regiões", df["regiao"].unique(), default=df["regiao"].unique()
-    )
-    df = df[df["regiao"].isin(regioes)]
-
-    tab1, tab2, tab3 = st.tabs(["Gráficos", "Tabela", "Detalhes"])
-
-    with tab1:
-        fig = px.line(df, x="data", y="receita", template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True)
-
-        fig2 = px.bar(
-            df.groupby("regiao")["vendas"].sum().reset_index(),
-            x="regiao", y="vendas",
-            template="plotly_white"
-        )
-        st.plotly_chart(fig2, use_container_width=True)
-
-    with tab2:
-        st.dataframe(df, use_container_width=True)
-
-    with tab3:
-        st.json({"package": package})
-
-# 
-# UI LAYER — AZUL
-# 
-
-def render_ui_blue(package):
-    apply_blue_theme()
-    st.title("📊 Dashboard Executivo — Tema Azul Corporativo")
-
-    df = load_sample_data()
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Receita Total", f"R$ {df['receita'].sum():,.0f}")
-    col2.metric("Vendas", f"{df['vendas'].sum():,}")
-    col3.metric("Clientes", f"{df['clientes'].sum():,}")
-    col4.metric("Média Receita", f"R$ {df['receita'].mean():,.0f}")
-
-    st.sidebar.header("Filtros")
-    regioes = st.sidebar.multiselect(
-        "Regiões", df["regiao"].unique(), default=df["regiao"].unique()
-    )
-    df = df[df["regiao"].isin(regioes)]
-
-    tab1, tab2, tab3 = st.tabs(["Gráficos", "Tabela", "Detalhes"])
-
-    with tab1:
-        fig = px.line(df, x="data", y="receita")
-        fig.update_layout(colorway=["#00A6FB"])
-        st.plotly_chart(fig, use_container_width=True)
-
-        fig2 = px.bar(
-            df.groupby("regiao")["vendas"].sum().reset_index(),
-            x="regiao", y="vendas"
-        )
-        fig2.update_layout(colorway=["#003B73", "#00A6FB"])
-        st.plotly_chart(fig2, use_container_width=True)
-
-    with tab2:
-        st.dataframe(df, use_container_width=True)
-
-    with tab3:
-        st.json({"package": package})
-
-# 
-# UI ROUTER
-# 
-
-def route_ui(package):
-    escolha = st.sidebar.selectbox(
-        "Tema visual",
-        ["Tema Branco", "Tema Azul Corporativo"]
-    )
-    if escolha == "Tema Branco":
-        render_ui_white(package)
+# ==========================================
+# UI LAYER: RENDERIZAÇÃO
+# ==========================================
+def render_dashboard(tema_nome, df_sorte, matriz_real, matriz_forca, df_pares):
+    if tema_nome == "Tema Branco":
+        apply_white_theme()
+        cor_grafico = "#0066CC"
+        template_grafico = "plotly_white"
     else:
-        render_ui_blue(package)
+        apply_blue_theme()
+        cor_grafico = "#00A6FB"
+        template_grafico = "plotly_dark"
 
-# 
-# APP
-# 
+    st.title("📊 Motor Analítico — Dia de Sorte")
 
-def load_and_analyze():
-    return {"status": "ok", "info": "package carregado"}
+    # KPIs
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Concursos Analisados", f"{len(df_sorte):,}")
+    col2.metric("Universo de Dezenas", "31")
+    col3.metric("Pares Possíveis", "465")
+    col4.metric("Maior Força Detectada", f"{df_pares['Força (Real/Esperado)'].max():.2f}x")
 
-package = load_and_analyze()
-route_ui(package)
+    tab1, tab2, tab3 = st.tabs(["Análise de Força (Pares)", "Heatmap de Coocorrência", "Base de Dados"])
+
+    with tab1:
+        st.subheader("Top 15 Pares com Maior Anomalia Estatística")
+        top_pares = df_pares.head(15)
+        fig_bar = px.bar(
+            top_pares, x="Par", y="Força (Real/Esperado)",
+            text="Força (Real/Esperado)", template=template_grafico,
+            labels={"Força (Real/Esperado)": "Força (Multiplicador)"}
+        )
+        fig_bar.update_traces(marker_color=cor_grafico, textposition='outside')
+        st.plotly_chart(fig_bar, use_container_width=True)
+        
+        st.dataframe(df_pares.head(50), use_container_width=True)
+
+    with tab2:
+        st.subheader("Matriz de Coocorrência (Frequência Real)")
+        # Fatiar a matriz para ignorar o índice 0 (dezenas vão de 1 a 31)
+        matriz_plot = matriz_real[1:, 1:]
+        fig_heat = px.imshow(
+            matriz_plot, 
+            x=list(range(1, 32)), y=list(range(1, 32)),
+            color_continuous_scale="Blues" if tema_nome == "Tema Branco" else "Teal",
+            template=template_grafico
+        )
+        st.plotly_chart(fig_heat, use_container_width=True)
+
+    with tab3:
+        st.subheader("Histórico de Sorteios (Amostra)")
+        st.dataframe(df_sorte, use_container_width=True)
+
+# ==========================================
+# APP ROUTER
+# ==========================================
+def main():
+    st.sidebar.title("⚙️ Configurações")
+    escolha_tema = st.sidebar.selectbox("Tema visual", ["Tema Branco", "Tema Azul Corporativo"])
+    
+    with st.spinner("Carregando dados e rodando Monte Carlo..."):
+        df_sorte = carregar_dados_dia_de_sorte()
+        matriz_real, matriz_esperada, matriz_forca = analisar_dia_de_sorte(df_sorte)
+        df_pares = preparar_df_pares(matriz_real, matriz_esperada, matriz_forca)
+        
+    render_dashboard(escolha_tema, df_sorte, matriz_real, matriz_forca, df_pares)
+
+if __name__ == "__main__":
+    st.set_page_config(page_title="Motor Dia de Sorte", layout="wide")
+    main()
