@@ -1,641 +1,428 @@
-import streamlit as st
-import pandas as pd
+import io
+import hashlib
 import numpy as np
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from io import BytesIO
-import hashlib
+import streamlit as st
 
-# ============================================================
-# CONFIGURAÇÃO DA PÁGINA E TEMA (ÚNICA VEZ)
-# ============================================================
-st.set_page_config(
-    page_title="Análise de Loterias",
-    page_icon="🎲",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="Lottery Analyzer", page_icon="🎲", layout="wide")
 
-# Tema base definido uma única vez
-THEME_PRIMARY = "#1f77b4"
-THEME_SECONDARY = "#ff7f0e"
-THEME_BG = "#0e1117"
-THEME_CARD = "#161b22"
-THEME_TEXT = "#e6edf3"
-
-# Injeção de CSS UMA ÚNICA VEZ (após definição do tema)
-st.markdown(
-    f"""
-    <style>
-        .stApp {{
-            background-color: {THEME_BG};
-            color: {THEME_TEXT};
-        }}
-        .main .block-container {{
-            padding-top: 1.5rem;
-            max-width: 1200px;
-        }}
-        h1, h2, h3, h4 {{
-            color: {THEME_TEXT};
-        }}
-        .stMetric {{
-            background-color: {THEME_CARD};
-            border: 1px solid #30363d;
-            border-radius: 8px;
-            padding: 12px 16px;
-        }}
-        .stMetric label {{
-            color: #8b949e !important;
-        }}
-        .stMetricValue {{
-            color: {THEME_TEXT} !important;
-        }}
-        .stButton > button, .stDownloadButton > button {{
-            background-color: {THEME_PRIMARY};
-            color: white;
-            border: none;
-            border-radius: 6px;
-        }}
-        .stButton > button:hover, .stDownloadButton > button:hover {{
-            background-color: {THEME_SECONDARY};
-            color: white;
-        }}
-        .stSelectbox label, .stFileUploader label, .stSlider label, .stNumberInput label {{
-            color: #c9d1d9 !important;
-        }}
-        .stTabs [data-baseweb="tab-list"] {{
-            gap: 8px;
-        }}
-        .stTabs [data-baseweb="tab"] {{
-            background-color: {THEME_CARD};
-            border-radius: 6px 6px 0 0;
-            color: {THEME_TEXT};
-        }}
-        .stTabs [aria-selected="true"] {{
-            background-color: {THEME_PRIMARY};
-            color: white !important;
-        }}
-        div[data-testid="stSidebar"] {{
-            background-color: {THEME_CARD};
-        }}
-        .pattern-card {{
-            background-color: {THEME_CARD};
-            border-left: 4px solid {THEME_PRIMARY};
-            padding: 10px 14px;
-            border-radius: 6px;
-            margin-bottom: 8px;
-        }}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# ============================================================
-# CONFIGURAÇÃO DAS LOTERIAS
-# ============================================================
-LOTTERIES = {
+LOTERIAS = {
     "Mega-Sena": {
-        "dezenas": 6,
-        "min": 1,
-        "max": 60,
+        "nome": "Mega-Sena",
+        "dezenas_total": 60,
+        "dezenas_min": 6,
+        "dezenas_max": 15,
         "colunas": ["bola1", "bola2", "bola3", "bola4", "bola5", "bola6"],
-    },
-    "Quina": {
-        "dezenas": 5,
-        "min": 1,
-        "max": 80,
-        "colunas": ["bola1", "bola2", "bola3", "bola4", "bola5"],
+        "extras": [],
     },
     "Lotofácil": {
-        "dezenas": 15,
-        "min": 1,
-        "max": 25,
+        "nome": "Lotofácil",
+        "dezenas_total": 25,
+        "dezenas_min": 15,
+        "dezenas_max": 20,
         "colunas": [f"bola{i}" for i in range(1, 16)],
+        "extras": [],
     },
-    "Lotomania": {
-        "dezenas": 20,
-        "min": 1,
-        "max": 100,
-        "colunas": [f"bola{i}" for i in range(1, 21)],
+    "Quina": {
+        "nome": "Quina",
+        "dezenas_total": 80,
+        "dezenas_min": 5,
+        "dezenas_max": 15,
+        "colunas": ["bola1", "bola2", "bola3", "bola4", "bola5"],
+        "extras": [],
+    },
+    "+Milionária": {
+        "nome": "+Milionária",
+        "dezenas_total": 50,
+        "dezenas_min": 6,
+        "dezenas_max": 10,
+        "colunas": [f"bola{i}" for i in range(1, 7)],
+        "extras": [
+            {"nome": "Trevos", "total": 6, "min": 2, "max": 2, "colunas": ["trevo1", "trevo2"]},
+        ],
+    },
+    "Dia de Sorte": {
+        "nome": "Dia de Sorte",
+        "dezenas_total": 31,
+        "dezenas_min": 7,
+        "dezenas_max": 15,
+        "colunas": [f"bola{i}" for i in range(1, 8)],
+        "extras": [
+            {"nome": "Mês de Sorte", "total": 12, "min": 1, "max": 1, "colunas": ["mes_sorte"]},
+        ],
     },
 }
 
-# ============================================================
-# FUNÇÕES UTILITÁRIAS
-# ============================================================
-@st.cache_data(show_spinner=False)
-def gerar_dados_sinteticos(loteria: str, n_concursos: int = 500) -> pd.DataFrame:
-    """Gera dados sintéticos quando não há upload."""
-    cfg = LOTTERIES[loteria]
-    rng = np.random.default_rng(seed=42)
-    dados = []
-    for concurso in range(1, n_concursos + 1):
-        dezenas = sorted(rng.choice(range(cfg["min"], cfg["max"] + 1), size=cfg["dezenas"], replace=False))
-        row = {"concurso": concurso, "data_sorteio": pd.Timestamp("2020-01-01") + pd.Timedelta(days=concurso * 7)}
-        for i, d in enumerate(dezenas):
-            row[cfg["colunas"][i]] = int(d)
-        dados.append(row)
-    return pd.DataFrame(dados)
+ESTRATEGIAS = ["Aleatório", "Mais Frequentes", "Pares Fortes", "Dezenas Atrasadas"]
 
 
-def normalizar_dataframe(df: pd.DataFrame, loteria: str) -> pd.DataFrame:
-    """Garante que o DataFrame tenha as colunas esperadas."""
-    cfg = LOTTERIES[loteria]
-    colunas_esperadas = cfg["colunas"]
-    # Tenta encontrar colunas de bolas mesmo com nomes diferentes
-    if not all(c in df.columns for c in colunas_esperadas):
-        # Procura colunas numéricas extras
-        candidatas = [c for c in df.columns if c not in ("concurso", "data_sorteio")]
-        if len(candidatas) >= cfg["dezenas"]:
-            df = df.rename(columns={candidatas[i]: colunas_esperadas[i] for i in range(cfg["dezenas"])})
-    for c in colunas_esperadas:
-        if c not in df.columns:
-            df[c] = np.nan
-    if "concurso" not in df.columns:
-        df["concurso"] = range(1, len(df) + 1)
+def aplicar_tema():
+    tema = st.session_state.get("tema", "Escuro")
+    if tema == "Escuro":
+        st.markdown(
+            """
+            <style>
+            .stApp { background-color: #0e1117; color: #fafafa; }
+            .stSidebar { background-color: #161b22; }
+            section[data-testid="stSidebar"] { background-color: #161b22; }
+            .stTabs [data-baseweb="tab"] { color: #c9d1d9; }
+            .stTabs [aria-selected="true"] { color: #58a6ff !important; }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            """
+            <style>
+            .stApp { background-color: #ffffff; color: #1f2328; }
+            .stSidebar { background-color: #f6f8fa; }
+            section[data-testid="stSidebar"] { background-color: #f6f8fa; }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def hash_arquivo(uploaded_file):
+    if uploaded_file is None:
+        return None
+    try:
+        uploaded_file.seek(0)
+        conteudo = uploaded_file.read()
+        uploaded_file.seek(0)
+        return hashlib.md5(conteudo).hexdigest()
+    except Exception:
+        return None
+
+
+def carregar_dados(uploaded_file, loteria_cfg):
+    if uploaded_file is None:
+        return None
+    try:
+        df = pd.read_csv(uploaded_file, sep=None, engine="python")
+    except Exception:
+        try:
+            uploaded_file.seek(0)
+            df = pd.read_excel(uploaded_file)
+        except Exception:
+            return None
+    df.columns = [str(c).strip().lower() for c in df.columns]
     return df
 
 
-def extrair_dezenas(df: pd.DataFrame, loteria: str) -> pd.DataFrame:
-    """Retorna DataFrame apenas com as colunas de dezenas."""
-    cfg = LOTTERIES[loteria]
-    return df[cfg["colunas"]].copy()
+def extrair_dezenas(df, loteria_cfg):
+    cols = [c for c in loteria_cfg["colunas"] if c in df.columns]
+    if not cols:
+        return pd.DataFrame()
+    sub = df[cols].copy()
+    for c in sub.columns:
+        sub[c] = pd.to_numeric(sub[c], errors="coerce")
+    return sub
 
 
-def calcular_frequencia(df: pd.DataFrame, loteria: str) -> pd.DataFrame:
-    """Calcula frequência de cada dezena."""
-    dezenas_df = extrair_dezenas(df, loteria)
-    todos = dezenas_df.values.flatten()
-    todos = todos[~pd.isna(todos)]
-    contagem = pd.Series(todos).value_counts().reset_index()
+def calcular_frequencia(dezenas_df):
+    if dezenas_df.empty:
+        return pd.DataFrame(columns=["dezena", "frequencia"])
+    valores = dezenas_df.values.flatten()
+    valores = valores[~pd.isna(valores)]
+    serie = pd.Series(valores).astype(int)
+    contagem = serie.value_counts().reset_index()
     contagem.columns = ["dezena", "frequencia"]
-    contagem["dezena"] = contagem["dezena"].astype(int)
     contagem = contagem.sort_values("dezena").reset_index(drop=True)
-    contagem["percentual"] = (contagem["frequencia"] / contagem["frequencia"].sum() * 100).round(2)
     return contagem
 
 
-def detectar_padroes(df: pd.DataFrame, loteria: str) -> dict:
-    """Detecta padrões nas dezenas sorteadas."""
-    dezenas_df = extrair_dezenas(df, loteria)
-    padroes = {
-        "pares": 0,
-        "impares": 0,
-        "soma_media": 0.0,
-        "soma_min": 0,
-        "soma_max": 0,
-        "sequencias": 0,
-        "repeticoes_consecutivas": 0,
-        "top_combinacoes": [],
-    }
-    todas_somas = []
-    concursos_anteriores = None
-    for _, row in dezenas_df.iterrows():
-        vals = row.dropna().astype(int).tolist()
-        if len(vals) == 0:
-            continue
-        pares = sum(1 for v in vals if v % 2 == 0)
-        impares = len(vals) - pares
-        padroes["pares"] += pares
-        padroes["impares"] += impares
-        soma = sum(vals)
-        todas_somas.append(soma)
-        # Sequências consecutivas dentro do concurso
-        ordenados = sorted(vals)
-        for i in range(len(ordenados) - 1):
-            if ordenados[i + 1] - ordenados[i] == 1:
-                padroes["sequencias"] += 1
-        # Repetição em relação ao concurso anterior
-        if concursos_anteriores is not None:
-            repetidas = set(vals) & set(concursos_anteriores)
-            padroes["repeticoes_consecutivas"] += len(repetidas)
-        concursos_anteriores = vals
-    if todas_somas:
-        padroes["soma_media"] = round(np.mean(todas_somas), 2)
-        padroes["soma_min"] = int(min(todas_somas))
-        padroes["soma_max"] = int(max(todas_somas))
-    # Top combinações de pares
-    combinacoes = []
-    for _, row in dezenas_df.iterrows():
-        vals = tuple(sorted(row.dropna().astype(int).tolist()))
-        if len(vals) == LOTTERIES[loteria]["dezenas"]:
-            combinacoes.append(vals)
-    if combinacoes:
-        serie_comb = pd.Series(combinacoes)
-        top = serie_comb.value_counts().head(5)
-        padroes["top_combinacoes"] = [(list(k), int(v)) for k, v in top.items()]
-    return padroes
+def calcular_atrasos(dezenas_df, total_dezenas):
+    if dezenas_df.empty:
+        return pd.DataFrame(columns=["dezena", "atraso"])
+    n_conc = len(dezenas_df)
+    atrasos = []
+    for d in range(1, total_dezenas + 1):
+        presente = dezenas_df.isin([d]).any(axis=1)
+        if presente.empty or not presente.any():
+            atrasos.append({"dezena": d, "atraso": n_conc})
+        else:
+            idx = presente[presente].index
+            ultimo = idx.max()
+            atrasos.append({"dezena": d, "atraso": int(n_conc - 1 - ultimo)})
+    return pd.DataFrame(atrasos).sort_values("dezena").reset_index(drop=True)
 
 
-def backtesting(df: pd.DataFrame, loteria: str, janela: int = 50) -> pd.DataFrame:
-    """Simula backtesting: usa frequência dos últimos N concursos para prever próximos."""
-    cfg = LOTTERIES[loteria]
-    dezenas_df = extrair_dezenas(df, loteria)
+def gerar_jogo(loteria_cfg, tamanho, estrategia, freq_df, atraso_df, rng):
+    total = loteria_cfg["dezenas_total"]
+    if estrategia == "Aleatório":
+        return sorted(rng.sample(range(1, total + 1), tamanho))
+    if estrategia == "Mais Frequentes" and not freq_df.empty:
+        top = freq_df.sort_values("frequencia", ascending=False)["dezena"].tolist()
+        pool = top[: max(tamanho * 3, tamanho)]
+        return sorted(rng.sample(pool, tamanho))
+    if estrategia == "Dezenas Atrasadas" and not atraso_df.empty:
+        top = atraso_df.sort_values("atraso", ascending=False)["dezena"].tolist()
+        pool = top[: max(tamanho * 3, tamanho)]
+        return sorted(rng.sample(pool, tamanho))
+    if estrategia == "Pares Fortes":
+        pares = [d for d in range(1, total + 1) if d % 2 == 0]
+        impares = [d for d in range(1, total + 1) if d % 2 != 0]
+        n_pares = max(1, tamanho // 2)
+        n_impares = tamanho - n_pares
+        if n_pares > len(pares):
+            n_pares = len(pares)
+            n_impares = tamanho - n_pares
+        return sorted(rng.sample(pares, n_pares) + rng.sample(impares, n_impares))
+    return sorted(rng.sample(range(1, total + 1), tamanho))
+
+
+def gerar_extras(loteria_cfg, rng):
+    extras = {}
+    for ex in loteria_cfg.get("extras", []):
+        if ex["nome"] == "Mês de Sorte":
+            extras["mes_sorte"] = rng.randint(1, ex["total"])
+        elif ex["nome"] == "Trevos":
+            extras["trevos"] = sorted(rng.sample(range(1, ex["total"] + 1), ex["min"]))
+    return extras
+
+
+def backtest(jogos, dezenas_df, loteria_cfg, extras_df=None):
+    if dezenas_df.empty or not jogos:
+        return pd.DataFrame()
     resultados = []
-    for i in range(janela, len(df)):
-        historico = dezenas_df.iloc[i - janela:i]
-        todos = historico.values.flatten()
-        todos = todos[~pd.isna(todos)]
-        freq = pd.Series(todos).value_counts()
-        # Top dezenas mais frequentes
-        top_dezenas = freq.head(cfg["dezenas"]).index.tolist()
-        top_dezenas = sorted([int(d) for d in top_dezenas])
-        # Concurso atual (real)
-        atual = sorted(dezenas_df.iloc[i].dropna().astype(int).tolist())
-        acertos = len(set(top_dezenas) & set(atual))
-        resultados.append({
-            "concurso": int(df.iloc[i]["concurso"]) if "concurso" in df.columns else i,
-            "acertos": acertos,
-            "previstas": str(top_dezenas),
-            "sorteadas": str(atual),
-        })
+    for _, row in dezenas_df.iterrows():
+        sorteadas = set(int(x) for x in row.tolist() if pd.notna(x))
+        for j_idx, jogo in enumerate(jogos):
+            acertos = len(set(jogo) & sorteadas)
+            linha = {"concurso": _, "jogo": j_idx + 1, "acertos": acertos}
+            if extras_df is not None and "mes_sorte" in extras_df.columns:
+                linha["mes_sorte"] = extras_df.loc[_, "mes_sorte"]
+            resultados.append(linha)
     return pd.DataFrame(resultados)
 
 
-def exportar_excel(df: pd.DataFrame) -> bytes:
-    """Exporta DataFrame para Excel em memória."""
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Resultado")
-    return output.getvalue()
+def main():
+    st.title("🎲 Lottery Analyzer")
+    st.caption("Análise de loterias, frequências, padrões, gerador de apostas e backtesting.")
 
+    with st.sidebar:
+        st.header("⚙️ Configurações")
+        temas = ["Escuro", "Claro"]
+        idx_tema = temas.index(st.session_state.get("tema", "Escuro")) if st.session_state.get("tema", "Escuro") in temas else 0
+        tema = st.selectbox("Tema", temas, index=idx_tema, key="select_tema")
+        st.session_state["tema"] = tema
 
-def exportar_csv(df: pd.DataFrame) -> bytes:
-    """Exporta DataFrame para CSV."""
-    return df.to_csv(index=False).encode("utf-8")
+        loteria_nomes = list(LOTERIAS.keys())
+        loteria_sel = st.session_state.get("loteria", loteria_nomes[0])
+        idx_lot = loteria_nomes.index(loteria_sel) if loteria_sel in loteria_nomes else 0
+        loteria_nome = st.selectbox("Loteria", loteria_nomes, index=idx_lot, key="select_loteria")
+        st.session_state["loteria"] = loteria_nome
+        loteria_cfg = LOTERIAS[loteria_nome]
 
+        st.divider()
+        st.subheader("📂 Upload de Arquivo")
+        uploaded_file = st.file_uploader("Envie o histórico (CSV/XLSX)", type=["csv", "xlsx"], key="file_uploader")
 
-def file_hash(uploaded_file) -> str:
-    """Calcula hash do arquivo para detectar mudanças."""
-    if uploaded_file is None:
-        return ""
-    uploaded_file.seek(0)
-    content = uploaded_file.read()
-    uploaded_file.seek(0)
-    return hashlib.md5(content).hexdigest()
+        hash_atual = hash_arquivo(uploaded_file)
+        if hash_atual != st.session_state.get("hash_arquivo"):
+            st.session_state["hash_arquivo"] = hash_atual
+            st.session_state["dados_df"] = None
+            st.session_state["dezenas_df"] = None
+            st.session_state["extras_df"] = None
 
+        if uploaded_file is not None and st.session_state.get("dados_df") is None:
+            with st.spinner("Carregando dados..."):
+                df = carregar_dados(uploaded_file, loteria_cfg)
+                if df is not None and not df.empty:
+                    st.session_state["dados_df"] = df
+                    st.session_state["dezenas_df"] = extrair_dezenas(df, loteria_cfg)
+                    extras_cols = []
+                    for ex in loteria_cfg.get("extras", []):
+                        extras_cols.extend([c for c in ex["colunas"] if c in df.columns])
+                    if extras_cols:
+                        st.session_state["extras_df"] = df[extras_cols].copy()
+                    else:
+                        st.session_state["extras_df"] = None
+                    st.success(f"{len(df)} registros carregados.")
+                else:
+                    st.error("Não foi possível carregar os dados.")
 
-# ============================================================
-# ESTADO DA SESSÃO
-# ============================================================
-if "lottery" not in st.session_state:
-    st.session_state["lottery"] = "Mega-Sena"
-if "uploaded_hash" not in st.session_state:
-    st.session_state["uploaded_hash"] = ""
-if "df_cache" not in st.session_state:
-    st.session_state["df_cache"] = None
-if "backtest_window" not in st.session_state:
-    st.session_state["backtest_window"] = 50
+    aplicar_tema()
 
-# ============================================================
-# SIDEBAR
-# ============================================================
-st.sidebar.title("🎲 Análise de Loterias")
+    dados_df = st.session_state.get("dados_df")
+    dezenas_df = st.session_state.get("dezenas_df")
+    extras_df = st.session_state.get("extras_df")
 
-# CORREÇÃO 1: selectbox apenas com key, sem dupla atribuição
-st.sidebar.markdown("### Selecione a Loteria")
-opcoes_loteria = list(LOTTERIES.keys())
-st.sidebar.selectbox("Loteria", opcoes_loteria, key="lottery")
+    abas = st.tabs([
+        "📋 Dados",
+        "📈 Frequência & Atrasos",
+        "🧩 Padrões",
+        "🎰 Gerador de Apostas",
+        "🔬 Backtesting",
+        "📤 Exportação",
+    ])
 
-loteria_selecionada = st.session_state["lottery"]
-cfg_loteria = LOTTERIES[loteria_selecionada]
+    with abas[0]:
+        st.subheader(f"📋 Dados - {loteria_nome}")
+        if dados_df is None:
+            st.info("Envie um arquivo na sidebar para visualizar os dados.")
+        else:
+            st.metric("Total de concursos", len(dados_df))
+            st.dataframe(dados_df.head(100), key="df_dados_head")
+            st.dataframe(dados_df.describe(include="all"), key="df_dados_describe")
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Upload de Planilha")
-st.sidebar.caption(f"Colunas esperadas: {', '.join(cfg_loteria['colunas'][:3])}...")
+    with abas[1]:
+        st.subheader(f"📈 Frequência & Atrasos - {loteria_nome}")
+        if dezenas_df is None or dezenas_df.empty:
+            st.info("Sem dados de dezenas disponíveis.")
+        else:
+            freq_df = calcular_frequencia(dezenas_df)
+            atraso_df = calcular_atrasos(dezenas_df, loteria_cfg["dezenas_total"])
 
-# CORREÇÃO 4: processa apenas se for arquivo novo
-uploaded_file = st.sidebar.file_uploader(
-    "Envie sua planilha (.xlsx, .csv)",
-    type=["xlsx", "xls", "csv"],
-    key="file_uploader",
-)
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**Frequência de Dezenas**")
+                fig = px.bar(freq_df, x="dezena", y="frequencia", title="Frequência")
+                st.plotly_chart(fig, use_container_width=True, key="chart_freq")
+                st.dataframe(freq_df, key="df_freq")
+            with c2:
+                st.markdown("**Atrasos de Dezenas**")
+                fig2 = px.bar(atraso_df, x="dezena", y="atraso", title="Atraso")
+                st.plotly_chart(fig2, use_container_width=True, key="chart_atraso")
+                st.dataframe(atraso_df, key="df_atraso")
 
-current_hash = file_hash(uploaded_file)
-if uploaded_file is not None and current_hash != st.session_state["uploaded_hash"]:
-    with st.spinner("Processando planilha..."):
-        try:
-            if uploaded_file.name.endswith(".csv"):
-                df_upload = pd.read_csv(uploaded_file)
+    with abas[2]:
+        st.subheader(f"🧩 Padrões - {loteria_nome}")
+        if dezenas_df is None or dezenas_df.empty:
+            st.info("Sem dados para análise de padrões.")
+        else:
+            freq_df = calcular_frequencia(dezenas_df)
+            matriz = []
+            total = loteria_cfg["dezenas_total"]
+            cols = 10 if total >= 25 else 6
+            linhas = (total + cols - 1) // cols
+            freq_map = dict(zip(freq_df["dezena"], freq_df["frequencia"]))
+            for i in range(linhas):
+                linha = []
+                for j in range(cols):
+                    d = i * cols + j + 1
+                    if d <= total:
+                        linha.append(freq_map.get(d, 0))
+                    else:
+                        linha.append(0)
+                matriz.append(linha)
+            fig3 = go.Figure(data=go.Heatmap(z=matriz, colorscale="Viridis"))
+            fig3.update_layout(title="Mapa de Calor - Frequência")
+            st.plotly_chart(fig3, use_container_width=True, key="chart_heatmap")
+
+            st.markdown("**Pares vs Ímpares (média por concurso)**")
+            pares = (dezenas_df % 2 == 0).sum(axis=1).mean()
+            impares = (dezenas_df % 2 != 0).sum(axis=1).mean()
+            st.metric("Média de Pares", round(float(pares), 2))
+            st.metric("Média de Ímpares", round(float(impares), 2))
+
+    with abas[3]:
+        st.subheader(f"🎰 Gerador de Apostas - {loteria_nome}")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            qtd_jogos = st.number_input("Quantidade de jogos", min_value=1, max_value=50, value=5, step=1, key="num_qtd_jogos")
+        with c2:
+            tamanho = st.number_input(
+                f"Tamanho da aposta ({loteria_cfg['dezenas_min']}-{loteria_cfg['dezenas_max']})",
+                min_value=loteria_cfg["dezenas_min"],
+                max_value=loteria_cfg["dezenas_max"],
+                value=loteria_cfg["dezenas_min"],
+                step=1,
+                key="num_tamanho",
+            )
+        with c3:
+            estrategia = st.selectbox("Estratégia", ESTRATEGIAS, key="select_estrategia")
+
+        seed = st.number_input("Seed (0 = aleatório)", min_value=0, value=0, step=1, key="num_seed")
+        rng = np.random.default_rng(seed if seed > 0 else None)
+
+        freq_df = calcular_frequencia(dezenas_df) if dezenas_df is not None and not dezenas_df.empty else pd.DataFrame()
+        atraso_df = calcular_atrasos(dezenas_df, loteria_cfg["dezenas_total"]) if dezenas_df is not None and not dezenas_df.empty else pd.DataFrame()
+
+        if st.button("🎯 Gerar Apostas", key="btn_gerar"):
+            jogos = []
+            for _ in range(int(qtd_jogos)):
+                jogo = gerar_jogo(loteria_cfg, int(tamanho), estrategia, freq_df, atraso_df, rng)
+                extras = gerar_extras(loteria_cfg, rng)
+                jogos.append({"jogo": jogo, "extras": extras})
+            st.session_state["jogos_gerados"] = jogos
+            st.success(f"{len(jogos)} jogos gerados!")
+
+        jogos = st.session_state.get("jogos_gerados", [])
+        if jogos:
+            st.markdown("**Apostas Geradas**")
+            linhas = []
+            for i, j in enumerate(jogos, 1):
+                linha = {"#": i, "Dezenas": " ".join(f"{d:02d}" for d in j["jogo"])}
+                for k, v in j["extras"].items():
+                    if isinstance(v, list):
+                        linha[k] = " ".join(f"{x:02d}" for x in v)
+                    else:
+                        linha[k] = v
+                linhas.append(linha)
+            st.dataframe(pd.DataFrame(linhas), key="df_jogos_gerados")
+
+    with abas[4]:
+        st.subheader(f"🔬 Backtesting - {loteria_nome}")
+        jogos = st.session_state.get("jogos_gerados", [])
+        if dezenas_df is None or dezenas_df.empty:
+            st.info("Sem dados para backtesting.")
+        elif not jogos:
+            st.info("Gere apostas na aba 'Gerador de Apostas' primeiro.")
+        else:
+            jogos_dezenas = [j["jogo"] for j in jogos]
+            bt = backtest(jogos_dezenas, dezenas_df, loteria_cfg, extras_df)
+            if bt.empty:
+                st.warning("Nenhum resultado de backtesting.")
             else:
-                df_upload = pd.read_excel(uploaded_file)
-            df_upload = normalizar_dataframe(df_upload, loteria_selecionada)
-            st.session_state["df_cache"] = df_upload
-            st.session_state["uploaded_hash"] = current_hash
-            st.sidebar.success(f"✅ Arquivo carregado: {len(df_upload)} concursos")
-        except Exception as e:
-            st.sidebar.error(f"❌ Erro ao processar: {e}")
-            st.session_state["df_cache"] = None
-            st.session_state["uploaded_hash"] = current_hash
-elif uploaded_file is None and st.session_state["df_cache"] is not None:
-    # Arquivo removido
-    st.session_state["df_cache"] = None
-    st.session_state["uploaded_hash"] = ""
+                st.metric("Total de comparações", len(bt))
+                resumo = bt.groupby("acertos").size().reset_index(name="quantidade")
+                fig4 = px.bar(resumo, x="acertos", y="quantidade", title="Distribuição de Acertos")
+                st.plotly_chart(fig4, use_container_width=True, key="chart_backtest")
+                st.dataframe(bt.head(200), key="df_backtest")
+                st.markdown("**Resumo por jogo**")
+                resumo_jogo = bt.groupby("jogo")["acertos"].agg(["min", "mean", "max"]).reset_index()
+                st.dataframe(resumo_jogo, key="df_backtest_resumo")
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Backtesting")
-st.sidebar.slider(
-    "Janela de análise (concursos)",
-    min_value=10,
-    max_value=200,
-    value=50,
-    step=10,
-    key="backtest_window",
-)
+    with abas[5]:
+        st.subheader(f"📤 Exportação - {loteria_nome}")
+        if dados_df is None:
+            st.info("Carregue dados para exportar.")
+        else:
+            freq_df = calcular_frequencia(dezenas_df) if dezenas_df is not None and not dezenas_df.empty else pd.DataFrame()
+            atraso_df = calcular_atrasos(dezenas_df, loteria_cfg["dezenas_total"]) if dezenas_df is not None and not dezenas_df.empty else pd.DataFrame()
+            jogos = st.session_state.get("jogos_gerados", [])
 
-st.sidebar.markdown("---")
-st.sidebar.info(
-    f"**{loteria_selecionada}**\n\n"
-    f"Dezenas por concurso: {cfg_loteria['dezenas']}\n\n"
-    f"Faixa: {cfg_loteria['min']} a {cfg_loteria['max']}"
-)
+            if st.button("⬇️ Gerar Excel", key="btn_exportar"):
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                    dados_df.to_excel(writer, sheet_name="Dados", index=False)
+                    if not freq_df.empty:
+                        freq_df.to_excel(writer, sheet_name="Frequencia", index=False)
+                    if not atraso_df.empty:
+                        atraso_df.to_excel(writer, sheet_name="Atrasos", index=False)
+                    if jogos:
+                        linhas = []
+                        for i, j in enumerate(jogos, 1):
+                            linha = {"#": i, "Dezenas": " ".join(str(d) for d in j["jogo"])}
+                            for k, v in j["extras"].items():
+                                linha[k] = " ".join(str(x) for x in v) if isinstance(v, list) else v
+                            linhas.append(linha)
+                        pd.DataFrame(linhas).to_excel(writer, sheet_name="Apostas", index=False)
+                output.seek(0)
+                st.download_button(
+                    label="📥 Baixar Excel",
+                    data=output,
+                    file_name=f"lottery_{loteria_nome.lower().replace(' ', '_')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="btn_download_excel",
+                )
+                st.success("Excel gerado com sucesso!")
 
-# ============================================================
-# CARREGAMENTO DE DADOS
-# ============================================================
-if st.session_state["df_cache"] is not None:
-    df = st.session_state["df_cache"]
-    fonte = "Upload"
-else:
-    df = gerar_dados_sinteticos(loteria_selecionia if False else loteria_selecionada, n_concursos=500)
-    fonte = "Dados sintéticos"
 
-# ============================================================
-# HEADER
-# ============================================================
-st.title(f"📊 Análise — {loteria_selecionada}")
-st.caption(f"Fonte dos dados: {fonte} | Total de concursos: {len(df)}")
-
-# ============================================================
-# MÉTRICAS PRINCIPAIS
-# ============================================================
-freq = calcular_frequencia(df, loteria_selecionada)
-padroes = detectar_padroes(df, loteria_selecionada)
-
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.metric("Concursos analisados", len(df))
-with col2:
-    st.metric("Dezena mais frequente", int(freq.iloc[freq["frequencia"].idxmax()]["dezena"]))
-with col3:
-    st.metric("Dezena menos frequente", int(freq.iloc[freq["frequencia"].idxmin()]["dezena"]))
-with col4:
-    st.metric("Soma média (dezenas)", padroes["soma_media"])
-
-st.markdown("---")
-
-# ============================================================
-# TABS
-# ============================================================
-tab_freq, tab_padroes, tab_backtest, tab_export = st.tabs([
-    "📈 Frequência",
-    "🎯 Padrões",
-    "🔬 Backtesting",
-    "💾 Exportação",
-])
-
-# ----------------------------------------------------------
-# TAB: FREQUÊNCIA
-# ----------------------------------------------------------
-with tab_freq:
-    st.subheader("Frequência das Dezenas")
-
-    col_a, col_b = st.columns([2, 1])
-
-    with col_a:
-        # CORREÇÃO 2: px.bar com dados pré-agregados via value_counts
-        freq_ordenada = freq.sort_values("frequencia", ascending=False).head(20)
-        fig_bar = px.bar(
-            freq_ordenada,
-            x="dezena",
-            y="frequencia",
-            title="Top 20 Dezenas Mais Frequentes",
-            color="frequencia",
-            color_continuous_scale="Blues",
-            labels={"dezena": "Dezena", "frequencia": "Frequência"},
-        )
-        fig_bar.update_layout(
-            template="plotly_dark",
-            paper_bgcolor=THEME_BG,
-            plot_bgcolor=THEME_BG,
-            font=dict(color=THEME_TEXT),
-        )
-        fig_bar.update_traces(texttemplate="%{y}", textposition="outside")
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-    with col_b:
-        st.markdown("#### Distribuição Par/Ímpar")
-        par_impar = pd.DataFrame({
-            "tipo": ["Pares", "Ímpares"],
-            "quantidade": [padroes["pares"], padroes["impares"]],
-        })
-        fig_pi = px.bar(
-            par_impar,
-            x="tipo",
-            y="quantidade",
-            color="tipo",
-            color_discrete_map={"Pares": THEME_PRIMARY, "Ímpares": THEME_SECONDARY},
-            labels={"tipo": "", "quantidade": "Quantidade"},
-        )
-        fig_pi.update_layout(
-            template="plotly_dark",
-            paper_bgcolor=THEME_BG,
-            plot_bgcolor=THEME_BG,
-            font=dict(color=THEME_TEXT),
-            showlegend=False,
-        )
-        st.plotly_chart(fig_pi, use_container_width=True)
-
-    st.markdown("#### Tabela Completa de Frequência")
-    st.dataframe(
-        freq.sort_values("frequencia", ascending=False),
-        use_container_width=True,
-        height=400,
-    )
-
-# ----------------------------------------------------------
-# TAB: PADRÕES
-# ----------------------------------------------------------
-with tab_padroes:
-    st.subheader("Padrões Identificados")
-
-    pc1, pc2, pc3 = st.columns(3)
-    with pc1:
-        st.metric("Soma mínima", padroes["soma_min"])
-    with pc2:
-        st.metric("Soma máxima", padroes["soma_max"])
-    with pc3:
-        st.metric("Sequências consecutivas", padroes["sequencias"])
-
-    st.markdown("#### Distribuição da Soma das Dezenas")
-    dezenas_df = extrair_dezenas(df, loteria_selecionada)
-    somas = dezenas_df.sum(axis=1).dropna().astype(int)
-    # CORREÇÃO 2: agregar com value_counts antes do px.bar
-    soma_dist = somas.value_counts().reset_index()
-    soma_dist.columns = ["soma", "frequencia"]
-    soma_dist = soma_dist.sort_values("soma")
-
-    fig_soma = px.bar(
-        soma_dist,
-        x="soma",
-        y="frequencia",
-        title="Distribuição da Soma por Concurso",
-        labels={"soma": "Soma das Dezenas", "frequencia": "Frequência"},
-        color="frequencia",
-        color_continuous_scale="Viridis",
-    )
-    fig_soma.update_layout(
-        template="plotly_dark",
-        paper_bgcolor=THEME_BG,
-        plot_bgcolor=THEME_BG,
-        font=dict(color=THEME_TEXT),
-    )
-    st.plotly_chart(fig_soma, use_container_width=True)
-
-    st.markdown("#### Repetições entre Concursos Consecutivos")
-    rep_data = pd.DataFrame({
-        "categoria": ["Repetições totais", "Concursos analisados"],
-        "valor": [padroes["repeticoes_consecutivas"], len(df) - 1],
-    })
-    fig_rep = px.bar(
-        rep_data,
-        x="categoria",
-        y="valor",
-        color="categoria",
-        color_discrete_sequence=[THEME_PRIMARY, THEME_SECONDARY],
-        labels={"categoria": "", "valor": "Quantidade"},
-    )
-    fig_rep.update_layout(
-        template="plotly_dark",
-        paper_bgcolor=THEME_BG,
-        plot_bgcolor=THEME_BG,
-        font=dict(color=THEME_TEXT),
-        showlegend=False,
-    )
-    st.plotly_chart(fig_rep, use_container_width=True)
-
-    st.markdown("#### Top 5 Combinações Mais Sorteadas")
-    if padroes["top_combinacoes"]:
-        for combinacao, count in padroes["top_combinacoes"]:
-            st.markdown(
-                f'<div class="pattern-card">'
-                f'<strong>Combinação:</strong> {combinacao} — '
-                f'<strong>Ocorrências:</strong> {count}'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-    else:
-        st.info("Nenhuma combinação repetida encontrada.")
-
-# ----------------------------------------------------------
-# TAB: BACKTESTING
-# ----------------------------------------------------------
-with tab_backtest:
-    st.subheader("🔬 Backtesting de Estratégia")
-    st.caption(
-        "A estratégia utiliza as dezenas mais frequentes dos últimos N concursos "
-        "para prever o próximo sorteio e compara com o resultado real."
-    )
-
-    janela = st.session_state["backtest_window"]
-
-    if len(df) <= janela:
-        st.warning(f"São necessários mais de {janela} concursos para o backtesting. Total atual: {len(df)}.")
-    else:
-        bt = backtesting(df, loteria_selecionada, janela=janela)
-
-        bc1, bc2, bc3 = st.columns(3)
-        with bc1:
-            st.metric("Concursos testados", len(bt))
-        with bc2:
-            st.metric("Média de acertos", round(bt["acertos"].mean(), 2))
-        with bc3:
-            st.metric("Máximo de acertos", int(bt["acertos"].max()))
-
-        st.markdown("#### Distribuição de Acertos")
-        # CORREÇÃO 2: agregar com value_counts antes do px.bar
-        acertos_dist = bt["acertos"].value_counts().reset_index()
-        acertos_dist.columns = ["acertos", "frequencia"]
-        acertos_dist = acertos_dist.sort_values("acertos")
-
-        fig_bt = px.bar(
-            acertos_dist,
-            x="acertos",
-            y="frequencia",
-            title="Distribuição de Acertos no Backtesting",
-            labels={"acertos": "Número de Acertos", "frequencia": "Frequência"},
-            color="frequencia",
-            color_continuous_scale="Sunset",
-        )
-        fig_bt.update_layout(
-            template="plotly_dark",
-            paper_bgcolor=THEME_BG,
-            plot_bgcolor=THEME_BG,
-            font=dict(color=THEME_TEXT),
-        )
-        st.plotly_chart(fig_bt, use_container_width=True)
-
-        st.markdown("#### Detalhes do Backtesting")
-        st.dataframe(bt, use_container_width=True, height=400)
-
-# ----------------------------------------------------------
-# TAB: EXPORTAÇÃO
-# ----------------------------------------------------------
-with tab_export:
-    st.subheader("💾 Exportação de Dados")
-
-    st.markdown("#### Exportar Frequência")
-    col_exp1, col_exp2 = st.columns(2)
-    with col_exp1:
-        st.download_button(
-            label="📥 Baixar Frequência (Excel)",
-            data=exportar_excel(freq),
-            file_name=f"frequencia_{loteria_selecionada.lower().replace('-', '_')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-    with col_exp2:
-        st.download_button(
-            label="📥 Baixar Frequência (CSV)",
-            data=exportar_csv(freq),
-            file_name=f"frequencia_{loteria_selecionada.lower().replace('-', '_')}.csv",
-            mime="text/csv",
-        )
-
-    st.markdown("#### Exportar Dados Completos")
-    col_exp3, col_exp4 = st.columns(2)
-    with col_exp3:
-        st.download_button(
-            label="📥 Baixar Dados (Excel)",
-            data=exportar_excel(df),
-            file_name=f"dados_{loteria_selecionada.lower().replace('-', '_')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-    with col_exp4:
-        st.download_button(
-            label="📥 Baixar Dados (CSV)",
-            data=exportar_csv(df),
-            file_name=f"dados_{loteria_selecionada.lower().replace('-', '_')}.csv",
-            mime="text/csv",
-        )
-
-    if len(df) > st.session_state["backtest_window"]:
-        st.markdown("#### Exportar Backtesting")
-        bt = backtesting(df, loteria_selecionada, janela=st.session_state["backtest_window"])
-        col_exp5, col_exp6 = st.columns(2)
-        with col_exp5:
-            st.download_button(
-                label="📥 Baixar Backtesting (Excel)",
-                data=exportar_excel(bt),
-                file_name=f"backtesting_{loteria_selecionada.lower().replace('-', '_')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-        with col_exp6:
-            st.download_button(
-                label="📥 Baixar Backtesting (CSV)",
-                data=exportar_csv(bt),
-                file_name=f"backtesting_{loteria_selecionada.lower().replace('-', '_')}.csv",
-                mime="text/csv",
-            )
-
-    st.markdown("---")
-    st.caption("Todos os dados exportados refletem o estado atual da análise.")
+if __name__ == "__main__":
+    main()
