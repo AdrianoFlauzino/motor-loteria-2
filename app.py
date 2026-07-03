@@ -1,472 +1,730 @@
 import streamlit as st
-import numpy as np
 import pandas as pd
-import plotly.express as px
+import numpy as np
 import plotly.graph_objects as go
-from itertools import combinations
+import plotly.express as px
+from plotly.subplots import make_subplots
+import itertools
+import random
+from io import BytesIO
 from collections import Counter
 from datetime import datetime, timedelta
-import random
+
+try:
+    import xlsxwriter
+except ImportError:
+    xlsxwriter = None
 
 # ============================================================
-# CONFIG DAS LOTERIAS
+# CONFIGURAÇÃO DAS LOTERIAS
 # ============================================================
-LOTERIAS = {
+LOTTERIES = {
     "Mega Sena": {
-        "dezenas": 60,
-        "tamanho_aposta": 6,
-        "min_aposta": 6,
-        "max_aposta": 20,
-        "extras": None,
-        "cor": "green",
+        "dezenas_total": 60,
+        "dezenas_aposta": 6,
+        "max_acertos": 6,
+        "premios": {4: "Quadra", 5: "Quina", 6: "Sena"},
+        "color": "green",
     },
     "Lotofácil": {
-        "dezenas": 25,
-        "tamanho_aposta": 15,
-        "min_aposta": 15,
-        "max_aposta": 20,
-        "extras": None,
-        "cor": "purple",
+        "dezenas_total": 25,
+        "dezenas_aposta": 15,
+        "max_acertos": 15,
+        "premios": {11: "Loteria", 12: "Loteria", 13: "Loteria", 14: "Quina", 15: "Sena"},
+        "color": "purple",
     },
     "Quina": {
-        "dezenas": 80,
-        "tamanho_aposta": 5,
-        "min_aposta": 5,
-        "max_aposta": 15,
-        "extras": None,
-        "cor": "blue",
+        "dezenas_total": 80,
+        "dezenas_aposta": 5,
+        "max_acertos": 5,
+        "premios": {2: "Duque", 3: "Terno", 4: "Quadra", 5: "Quina"},
+        "color": "blue",
     },
     "+Milionária": {
-        "dezenas": 50,
-        "tamanho_aposta": 6,
-        "min_aposta": 6,
-        "max_aposta": 12,
-        "extras": {"nome": "Trevos", "quantidade": 2, "universo": 6},
-        "cor": "orange",
+        "dezenas_total": 50,
+        "dezenas_aposta": 6,
+        "max_acertos": 6,
+        "premios": {4: "Quadra", 5: "Quina", 6: "Sena"},
+        "color": "orange",
     },
     "Dia de Sorte": {
-        "dezenas": 31,
-        "tamanho_aposta": 7,
-        "min_aposta": 7,
-        "max_aposta": 15,
-        "extras": {"nome": "Mês de Sorte", "quantidade": 1, "universo": 12},
-        "cor": "pink",
+        "dezenas_total": 31,
+        "dezenas_aposta": 7,
+        "max_acertos": 7,
+        "premios": {4: "Quadra", 5: "Quina", 6: "Sena", 7: "Sena+Mês"},
+        "color": "pink",
     },
 }
 
-MESES = [
-    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
-]
+THEME_COLORS = {
+    "Branco": {"bg": "#FFFFFF", "text": "#1E3A5F", "accent": "#1E90FF", "card": "#F0F8FF"},
+    "Azul": {"bg": "#0A1628", "text": "#E6F0FF", "accent": "#00BFFF", "card": "#13294B"},
+}
 
 # ============================================================
-# CAMADA DE DADOS (GERADOR DE HISTÓRICO SIMULADO)
+# UTILITÁRIOS
 # ============================================================
+
+def is_prime(n):
+    if n < 2:
+        return False
+    if n == 2:
+        return True
+    if n % 2 == 0:
+        return False
+    for i in range(3, int(np.sqrt(n)) + 1, 2):
+        if n % i == 0:
+            return False
+    return True
+
+
+def get_theme():
+    if "theme" not in st.session_state:
+        st.session_state["theme"] = "Branco"
+    return THEME_COLORS[st.session_state["theme"]]
+
+
+def apply_theme_css():
+    theme = get_theme()
+    st.markdown(f"""
+    <style>
+    .stApp {{ background-color: {theme['bg']}; color: {theme['text']}; }}
+    .stTabs [data-baseweb="tab"] {{ color: {theme['text']}; }}
+    .stTabs [aria-selected="true"] {{ color: {theme['accent']}; border-bottom-color: {theme['accent']}; }}
+    .metric-card {{
+        background-color: {theme['card']};
+        border-radius: 12px; padding: 18px; margin: 6px 0;
+        border-left: 4px solid {theme['accent']};
+    }}
+    .section-title {{ color: {theme['accent']}; font-weight: 700; font-size: 1.3rem; }}
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def metric_card(label, value, sub=""):
+    theme = get_theme()
+    st.markdown(f"""
+    <div class="metric-card">
+        <div style="font-size:0.8rem;opacity:0.8;">{label}</div>
+        <div style="font-size:1.6rem;font-weight:700;color:{theme['accent']};">{value}</div>
+        <div style="font-size:0.75rem;opacity:0.6;">{sub}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ============================================================
+# GERAÇÃO DE DADOS MOCKADOS
+# ============================================================
+
 @st.cache_data(show_spinner=False)
-def gerar_historico(nome_loteria: str, n_concursos: int = 300) -> pd.DataFrame:
-    """Gera um histórico simulado de concursos para a loteria escolhida."""
-    cfg = LOTERIAS[nome_loteria]
-    total_dezenas = cfg["dezenas"]
-    tamanho = cfg["tamanho_aposta"]
-    extras_cfg = cfg.get("extras")
-
-    rng = np.random.default_rng(seed=hash(nome_loteria) % (2**32))
-    linhas = []
-    data_base = datetime(2023, 1, 1)
-
-    for i in range(1, n_concursos + 1):
-        dezenas = sorted(rng.choice(range(1, total_dezenas + 1), size=tamanho, replace=False).tolist())
-        linha = {"concurso": i, "data": data_base + timedelta(days=i * 2)}
-        for j, d in enumerate(dezenas, start=1):
-            linha[f"d{j}"] = d
-        if extras_cfg:
-            if extras_cfg["nome"] == "Mês de Sorte":
-                linha["extra"] = rng.integers(1, extras_cfg["universo"] + 1)
-            elif extras_cfg["nome"] == "Trevos":
-                linha["extra"] = ",".join(
-                    map(str, sorted(rng.choice(range(1, extras_cfg["universo"] + 1), size=extras_cfg["quantidade"], replace=False).tolist()))
-                )
-        linhas.append(linha)
-
-    df = pd.DataFrame(linhas)
-    return df
-
-
-def obter_dezenas_df(df: pd.DataFrame) -> list[list[int]]:
-    """Extrai a lista de dezenas de cada concurso a partir do DataFrame."""
-    cols = [c for c in df.columns if c.startswith("d") and c[1:].isdigit()]
-    return df[cols].values.tolist()
-
+def generate_mock_data(lottery_name, n_draws=300):
+    cfg = LOTTERIES[lottery_name]
+    total = cfg["dezenas_total"]
+    pick = cfg["dezenas_aposta"]
+    rows = []
+    base_date = datetime.now() - timedelta(days=n_draws * 3)
+    for i in range(n_draws):
+        nums = sorted(random.sample(range(1, total + 1), pick))
+        row = {"concurso": n_draws - i, "data": (base_date + timedelta(days=i * 3)).strftime("%d/%m/%Y")}
+        for j, n in enumerate(nums):
+            row[f"d{j+1}"] = n
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 # ============================================================
-# CAMADA ANALÍTICA
+# INGESTÃO DE DADOS
 # ============================================================
-@st.cache_data(show_spinner=False)
-def calcular_frequencia(dezenas_lista: list[list[int]], total_dezenas: int) -> pd.DataFrame:
-    """Calcula a frequência absoluta de cada dezena."""
-    contagem = Counter()
-    for aposta in dezenas_lista:
-        contagem.update(aposta)
-    dados = [{"dezena": d, "frequencia": contagem.get(d, 0)} for d in range(1, total_dezenas + 1)]
-    return pd.DataFrame(dados).sort_values("frequencia", ascending=False).reset_index(drop=True)
+
+def infer_dezena_columns(df):
+    candidates = [c for c in df.columns if str(c).lower().startswith("d") or str(c).lower().startswith("bola")]
+    numeric_candidates = []
+    for c in candidates:
+        try:
+            vals = pd.to_numeric(df[c], errors="coerce").dropna()
+            if len(vals) > 0 and vals.min() >= 1 and vals.max() <= 100:
+                numeric_candidates.append(c)
+        except Exception:
+            pass
+    if numeric_candidates:
+        return numeric_candidates
+    # fallback: any numeric columns excluding concurso/data
+    skip = {"concurso", "data", "arrecadacao", "ganhadores"}
+    numeric_cols = []
+    for c in df.columns:
+        if str(c).lower() in skip:
+            continue
+        if pd.api.types.is_numeric_dtype(df[c]):
+            numeric_cols.append(c)
+    return numeric_cols
 
 
-@st.cache_data(show_spinner=False)
-def calcular_atraso(dezenas_lista: list[list[int]], total_dezenas: int) -> pd.DataFrame:
-    """Calcula o atraso de cada dezena (concursos desde a última aparição)."""
-    n = len(dezenas_lista)
-    ultima_aparicao = {d: -1 for d in range(1, total_dezenas + 1)}
-    for idx, aposta in enumerate(dezenas_lista):
-        for d in aposta:
-            ultima_aparicao[d] = idx
-    dados = []
-    for d in range(1, total_dezenas + 1):
-        if ultima_aparicao[d] == -1:
-            atraso = n
+def process_uploaded_file(uploaded_file, lottery_name):
+    try:
+        if uploaded_file.name.lower().endswith(".csv"):
+            df = pd.read_csv(uploaded_file, sep=None, engine="python")
         else:
-            atraso = n - 1 - ultima_aparicao[d]
-        dados.append({"dezena": d, "atraso": atraso})
-    return pd.DataFrame(dados).sort_values("atraso", ascending=False).reset_index(drop=True)
+            df = pd.read_excel(uploaded_file)
+        dezena_cols = infer_dezena_columns(df)
+        if len(dezena_cols) < LOTTERIES[lottery_name]["dezenas_aposta"]:
+            st.warning(f"Não foi possível identificar colunas de dezenas suficientes. Usando dados mockados.")
+            return None
+        # normalizar nomes das colunas de dezenas para d1, d2, ...
+        pick = LOTTERIES[lottery_name]["dezenas_aposta"]
+        keep = []
+        for i in range(pick):
+            if i < len(dezena_cols):
+                keep.append(dezena_cols[i])
+        df_out = df[keep].copy()
+        df_out.columns = [f"d{i+1}" for i in range(pick)]
+        # preservar concurso/data se existirem
+        if "concurso" in [str(c).lower() for c in df.columns]:
+            for c in df.columns:
+                if str(c).lower() == "concurso":
+                    df_out.insert(0, "concurso", df[c])
+        if "data" in [str(c).lower() for c in df.columns]:
+            for c in df.columns:
+                if str(c).lower() == "data":
+                    df_out.insert(1, "data", df[c])
+        return df_out
+    except Exception as e:
+        st.error(f"Erro ao processar arquivo: {e}")
+        return None
+
+
+def get_dezenas_matrix(df, lottery_name):
+    pick = LOTTERIES[lottery_name]["dezenas_aposta"]
+    cols = [f"d{i+1}" for i in range(pick)]
+    existing = [c for c in cols if c in df.columns]
+    if len(existing) < pick:
+        existing = infer_dezena_columns(df)[:pick]
+    mat = df[existing].apply(pd.to_numeric, errors="coerce").dropna()
+    return mat.values.astype(int)
+
+# ============================================================
+# ANÁLISES ESTATÍSTICAS
+# ============================================================
+
+@st.cache_data(show_spinner=False)
+def compute_frequency(draws_matrix, total_numbers):
+    flat = draws_matrix.flatten()
+    freq = Counter(flat.tolist())
+    return {n: freq.get(n, 0) for n in range(1, total_numbers + 1)}
 
 
 @st.cache_data(show_spinner=False)
-def matriz_coocorrencia(dezenas_lista: list[list[int]], total_dezenas: int) -> np.ndarray:
-    """Matriz de coocorrência otimizada com itertools.combinations."""
-    matriz = np.zeros((total_dezenas, total_dezenas), dtype=int)
-    for aposta in dezenas_lista:
-        for a, b in combinations(sorted(aposta), 2):
-            matriz[a - 1, b - 1] += 1
-            matriz[b - 1, a - 1] += 1
-    np.fill_diagonal(matriz, 0)
-    return matriz
+def compute_delays(draws_matrix, total_numbers):
+    n_draws = len(draws_matrix)
+    delays = {}
+    for num in range(1, total_numbers + 1):
+        last_seen = None
+        for i in range(n_draws - 1, -1, -1):
+            if num in draws_matrix[i]:
+                last_seen = i
+                break
+        if last_seen is None:
+            delays[num] = n_draws
+        else:
+            delays[num] = (n_draws - 1) - last_seen
+    return delays
 
 
 @st.cache_data(show_spinner=False)
-def monte_carlo_pares(
-    dezenas_lista: list[list[int]],
-    total_dezenas: int,
-    tamanho_aposta: int,
-    n_sim: int = 500,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Monte Carlo: simula concursos aleatórios e calcula a matriz esperada de pares.
-    Retorna (matriz_real, matriz_esperada) e a força Real/Esperado é derivada.
-    """
-    matriz_real = matriz_coocorrencia(dezenas_lista, total_dezenas)
-    matriz_esperada = np.zeros((total_dezenas, total_dezenas), dtype=float)
-
-    rng = np.random.default_rng(seed=42)
-    for _ in range(n_sim):
-        simulado = rng.choice(range(1, total_dezenas + 1), size=tamanho_aposta, replace=False)
-        for a, b in combinations(sorted(simulado), 2):
-            matriz_esperada[a - 1, b - 1] += 1
-            matriz_esperada[b - 1, a - 1] += 1
-    matriz_esperada /= n_sim
-
-    # Probabilidade teórica de um par aparecer em uma aposta
-    p_par = tamanho_aposta * (tamanho_aposta - 1) / (total_dezenas * (total_dezenas - 1))
-    n_concursos = len(dezenas_lista)
-    matriz_esperada_teorica = np.full((total_dezenas, total_dezenas), p_par * n_concursos, dtype=float)
-    np.fill_diagonal(matriz_esperada_teorica, 0)
-
-    return matriz_real, matriz_esperada_teorica
+def monte_carlo_pairs(draws_matrix, total_numbers, iterations=5000):
+    rng = np.random.default_rng(42)
+    pair_counts = Counter()
+    for _ in range(iterations):
+        sample = rng.choice(total_numbers, size=2, replace=False)
+        pair = tuple(sorted(sample.tolist()))
+        pair_counts[pair] += 1
+    # também pares reais do histórico
+    real_pairs = Counter()
+    for row in draws_matrix:
+        for combo in itertools.combinations(sorted(row.tolist()), 2):
+            real_pairs[combo] += 1
+    return pair_counts, real_pairs
 
 
 @st.cache_data(show_spinner=False)
-def forca_pares(
-    dezenas_lista: list[list[int]],
-    total_dezenas: int,
-    tamanho_aposta: int,
-    n_sim: int = 500,
-) -> pd.DataFrame:
-    """Calcula a força (Real/Esperado) de cada par de dezenas."""
-    matriz_real, matriz_esperada = monte_carlo_pares(dezenas_lista, total_dezenas, tamanho_aposta, n_sim)
-    registros = []
-    for a, b in combinations(range(total_dezenas), 2):
-        real = matriz_real[a, b]
-        esperado = matriz_esperada[a, b]
-        forca = (real / esperado) if esperado > 0 else 0.0
-        registros.append({
-            "par": f"{a + 1:02d}-{b + 1:02d}",
-            "d1": a + 1,
-            "d2": b + 1,
-            "real": int(real),
-            "esperado": float(esperado),
-            "forca": float(forca),
-        })
-    df = pd.DataFrame(registros)
-    return df.sort_values("forca", ascending=False).reset_index(drop=True)
-
+def compute_patterns(draws_matrix, total_numbers):
+    n = len(draws_matrix)
+    impar_ratios = []
+    prime_counts = []
+    sums = []
+    for row in draws_matrix:
+        nums = row.tolist()
+        impares = sum(1 for x in nums if x % 2 != 0)
+        impar_ratios.append(impares / len(nums))
+        prime_counts.append(sum(1 for x in nums if is_prime(int(x))))
+        sums.append(sum(nums))
+    return {
+        "impar_ratio_mean": float(np.mean(impar_ratios)),
+        "impar_ratios": impar_ratios,
+        "prime_mean": float(np.mean(prime_counts)),
+        "prime_counts": prime_counts,
+        "sums": sums,
+        "sum_mean": float(np.mean(sums)),
+        "sum_std": float(np.std(sums)),
+    }
 
 # ============================================================
 # GERADOR DE APOSTAS
 # ============================================================
-def gerar_aposta_aleatoria(total_dezenas: int, tamanho: int, rng: random.Random) -> list[int]:
-    return sorted(rng.sample(range(1, total_dezenas + 1), tamanho))
+
+def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido", weight_freq=0.4, weight_delay=0.3, weight_pairs=0.3):
+    cfg = LOTTERIES[lottery_name]
+    total = cfg["dezenas_total"]
+    pick = cfg["dezenas_aposta"]
+
+    freq = compute_frequency(draws_matrix, total)
+    delays = compute_delays(draws_matrix, total)
+    mc_pairs, real_pairs = monte_carlo_pairs(draws_matrix, total, iterations=3000)
+
+    # Normalizar frequências e atrasos
+    max_freq = max(freq.values()) if max(freq.values()) > 0 else 1
+    max_delay = max(delays.values()) if max(delays.values()) > 0 else 1
+
+    scores = {}
+    for num in range(1, total + 1):
+        f_score = freq.get(num, 0) / max_freq
+        d_score = delays.get(num, 0) / max_delay
+        scores[num] = weight_freq * f_score + weight_delay * d_score
+
+    # Score de pares: soma das médias de pares reais
+    pair_score_map = {num: 0.0 for num in range(1, total + 1)}
+    for (a, b), cnt in real_pairs.items():
+        pair_score_map[a] += cnt
+        pair_score_map[b] += cnt
+    max_pair = max(pair_score_map.values()) if max(pair_score_map.values()) > 0 else 1
+    for num in pair_score_map:
+        scores[num] += weight_pairs * (pair_score_map[num] / max_pair)
+
+    bets = []
+    rng = random.Random(42)
+
+    for _ in range(n_bets):
+        if strategy == "frequentes":
+            top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:pick * 3]
+            chosen = rng.sample([x[0] for x in top], pick)
+        elif strategy == "atrasadas":
+            top = sorted(delays.items(), key=lambda x: x[1], reverse=True)[:pick * 3]
+            chosen = rng.sample([x[0] for x in top], pick)
+        elif strategy == "aleatória":
+            chosen = rng.sample(range(1, total + 1), pick)
+        else:  # híbrido
+            # roleta ponderada
+            nums = list(scores.keys())
+            weights = [scores[n] + 0.01 for n in nums]
+            chosen = set()
+            while len(chosen) < pick:
+                selected = rng.choices(nums, weights=weights, k=1)[0]
+                chosen.add(selected)
+            chosen = list(chosen)
+        bets.append(sorted(chosen))
+
+    return bets, freq, delays, real_pairs
 
 
-def gerar_aposta_frequentes(df_freq: pd.DataFrame, tamanho: int) -> list[int]:
-    return sorted(df_freq.head(tamanho)["dezena"].tolist())
-
-
-def gerar_aposta_pares_fortes(df_pares: pd.DataFrame, tamanho: int, total_dezenas: int) -> list[int]:
-    """Constrói aposta a partir dos pares mais fortes (greedy)."""
-    selecionadas: set[int] = set()
-    for _, row in df_pares.iterrows():
-        if len(selecionadas) >= tamanho:
-            break
-        selecionadas.add(int(row["d1"]))
-        if len(selecionadas) < tamanho:
-            selecionadas.add(int(row["d2"]))
-    if len(selecionadas) < tamanho:
-        restantes = [d for d in range(1, total_dezenas + 1) if d not in selecionadas]
-        selecionadas.update(restantes[: tamanho - len(selecionadas)])
-    return sorted(selecionadas)[:tamanho]
-
-
-def gerar_aposta_atrasadas(df_atraso: pd.DataFrame, tamanho: int) -> list[int]:
-    """Estratégia: dezenas mais atrasadas."""
-    return sorted(df_atraso.head(tamanho)["dezena"].tolist())
-
-
-def gerar_aposta(
-    estrategia: str,
-    cfg: dict,
-    df_freq: pd.DataFrame,
-    df_atraso: pd.DataFrame,
-    df_pares: pd.DataFrame,
-    tamanho: int,
-    seed: int | None = None,
-) -> list[int]:
-    rng = random.Random(seed)
-    total = cfg["dezenas"]
-    if estrategia == "Aleatório":
-        return gerar_aposta_aleatoria(total, tamanho, rng)
-    if estrategia == "Mais Frequentes":
-        return gerar_aposta_frequentes(df_freq, tamanho)
-    if estrategia == "Pares Fortes":
-        return gerar_aposta_pares_fortes(df_pares, tamanho, total)
-    if estrategia == "Dezenas Atrasadas":
-        return gerar_aposta_atrasadas(df_atraso, tamanho)
-    return gerar_aposta_aleatoria(total, tamanho, rng)
-
-
-def gerar_extras(cfg: dict, seed: int | None = None) -> str | None:
-    extras_cfg = cfg.get("extras")
-    if not extras_cfg:
-        return None
-    rng = random.Random(seed)
-    if extras_cfg["nome"] == "Mês de Sorte":
-        return MESES[rng.randint(0, 11)]
-    if extras_cfg["nome"] == "Trevos":
-        return ", ".join(map(str, sorted(rng.sample(range(1, extras_cfg["universo"] + 1), extras_cfg["quantidade"]))))
-    return None
-
+def find_strong_pairs(real_pairs, top_n=20):
+    return real_pairs.most_common(top_n)
 
 # ============================================================
-# VISUALIZAÇÃO (PLOTLY)
+# BACKTESTING
 # ============================================================
-def plot_heatmap_coocorrencia(matriz: np.ndarray, tema: str) -> go.Figure:
-    total = matriz.shape[0]
-    fig = px.imshow(
-        matriz,
-        labels=dict(x="Dezena", y="Dezena", color="Coocorrência"),
-        x=[str(i) for i in range(1, total + 1)],
-        y=[str(i) for i in range(1, total + 1)],
-        color_continuous_scale="Blues" if tema == "Azul" else "Viridis",
-        aspect="auto",
-    )
-    fig.update_layout(
-        title="Matriz de Coocorrência (Interativa)",
-        template="plotly_white" if tema == "Branco" else "plotly_dark",
-        height=600,
-    )
-    return fig
 
+def run_backtest(bets, draws_matrix, lottery_name):
+    cfg = LOTTERIES[lottery_name]
+    premios = cfg["premios"]
+    results = {label: 0 for label in set(premios.values())}
+    results["Nenhum"] = 0
+    detail_rows = []
 
-def plot_frequencia_bar(df_freq: pd.DataFrame, tema: str, cor: str = "green") -> go.Figure:
-    fig = px.bar(
-        df_freq.sort_values("dezena"),
-        x="dezena",
-        y="frequencia",
-        labels={"dezena": "Dezena", "frequencia": "Frequência"},
-        color_discrete_sequence=[cor],
-    )
+    bet_sets = [set(b) for b in bets]
+
+    for draw_idx, row in enumerate(draws_matrix):
+        draw_set = set(int(x) for x in row)
+        for bet_idx, bset in enumerate(bet_sets):
+            hits = len(bset & draw_set)
+            label = premios.get(hits, None)
+            if label:
+                results[label] = results.get(label, 0) + 1
+                detail_rows.append({
+                    "Concurso": draw_idx + 1,
+                    "Aposta #": bet_idx + 1,
+                    "Acertos": hits,
+                    "Prêmio": label,
+                })
+            elif hits >= 3:
+                results["Nenhum"] += 1
+
+    return results, pd.DataFrame(detail_rows)
+
+# ============================================================
+# EXPORTAÇÃO EXCEL
+# ============================================================
+
+def export_to_excel(bets, freq, delays, strong_pairs, lottery_name):
+    cfg = LOTTERIES[lottery_name]
+    total = cfg["dezenas_total"]
+
+    df_bets = pd.DataFrame(bets, columns=[f"d{i+1}" for i in range(len(bets[0]))])
+    df_bets.insert(0, "Aposta", range(1, len(bets) + 1))
+
+    df_freq = pd.DataFrame([
+        {"Dezena": n, "Frequência": freq.get(n, 0)} for n in range(1, total + 1)
+    ]).sort_values("Frequência", ascending=False)
+
+    df_delays = pd.DataFrame([
+        {"Dezena": n, "Atraso (concursos)": delays.get(n, 0)} for n in range(1, total + 1)
+    ]).sort_values("Atraso (concursos)", ascending=False)
+
+    df_pairs = pd.DataFrame(strong_pairs, columns=["Par", "Ocorrências"])
+    df_pairs["Dezena_A"] = df_pairs["Par"].apply(lambda x: x[0])
+    df_pairs["Dezena_B"] = df_pairs["Par"].apply(lambda x: x[1])
+    df_pairs = df_pairs[["Dezena_A", "Dezena_B", "Ocorrências"]]
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df_bets.to_excel(writer, sheet_name="Apostas", index=False)
+        df_freq.to_excel(writer, sheet_name="Frequência", index=False)
+        df_delays.to_excel(writer, sheet_name="Atrasos", index=False)
+        df_pairs.to_excel(writer, sheet_name="Pares Fortes", index=False)
+
+        wb = writer.book
+        header_fmt = wb.add_format({"bold": True, "bg_color": "#1E90FF", "font_color": "white", "border": 1})
+        for sheet_name in ["Apostas", "Frequência", "Atrasos", "Pares Fortes"]:
+            ws = writer.sheets[sheet_name]
+            for col_num, col_name in enumerate(writer.sheets[sheet_name]._url if hasattr(writer.sheets[sheet_name], "_url") else []):
+                pass
+            ws.set_column(0, 10, 18)
+
+    output.seek(0)
+    return output
+
+# ============================================================
+# GRÁFICOS PLOTLY
+# ============================================================
+
+def plot_frequency_bar(freq, total, theme):
+    nums = list(range(1, total + 1))
+    vals = [freq.get(n, 0) for n in nums]
+    fig = go.Figure(data=[go.Bar(x=nums, y=vals, marker_color=theme["accent"])])
     fig.update_layout(
         title="Frequência de Dezenas",
-        template="plotly_white" if tema == "Branco" else "plotly_dark",
-        height=450,
+        xaxis_title="Dezena", yaxis_title="Frequência",
+        template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
     )
     return fig
 
 
-def plot_atraso_bar(df_atraso: pd.DataFrame, tema: str, cor: str = "orange") -> go.Figure:
-    fig = px.bar(
-        df_atraso.sort_values("dezena"),
-        x="dezena",
-        y="atraso",
-        labels={"dezena": "Dezena", "atraso": "Atraso (concursos)"},
-        color_discrete_sequence=[cor],
-    )
+def plot_delays_bar(delays, total, theme):
+    nums = list(range(1, total + 1))
+    vals = [delays.get(n, 0) for n in nums]
+    fig = go.Figure(data=[go.Bar(x=nums, y=vals, marker_color=theme["accent"], opacity=0.8)])
     fig.update_layout(
-        title="Atraso de Dezenas",
-        template="plotly_white" if tema == "Branco" else "plotly_dark",
-        height=450,
+        title="Atraso de Dezenas (concursos sem aparecer)",
+        xaxis_title="Dezena", yaxis_title="Atraso",
+        template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
     )
     return fig
 
 
-def plot_forca_pares_bar(df_pares: pd.DataFrame, tema: str, top_n: int = 20) -> go.Figure:
-    top = df_pares.head(top_n)
-    fig = px.bar(
-        top,
-        x="par",
-        y="forca",
-        labels={"par": "Par", "forca": "Força (Real/Esperado)"},
-        color="forca",
-        color_continuous_scale="Inferno",
+def plot_patterns(patterns, theme):
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=("Proporção Ímpar/Par por Sorteio", "Números Primos por Sorteio",
+                        "Distribuição da Soma das Dezenas", "Resumo Médias"),
+        specs=[[{"type": "histogram"}, {"type": "histogram"}],
+               [{"type": "histogram"}, {"type": "indicator"}]],
     )
+
+    fig.add_trace(go.Histogram(x=patterns["impar_ratios"], nbinsx=20, marker_color=theme["accent"], name="Ímpar/Par"), row=1, col=1)
+    fig.add_trace(go.Histogram(x=patterns["prime_counts"], nbinsx=20, marker_color="#FF6B6B", name="Primos"), row=1, col=2)
+    fig.add_trace(go.Histogram(x=patterns["sums"], nbinsx=30, marker_color="#4ECDC4", name="Soma"), row=2, col=1)
+
+    fig.add_trace(go.Indicator(
+        mode="number",
+        value=patterns["impar_ratio_mean"],
+        title={"text": "Média Ímpar/Par"},
+        number={"valueformat": ".2%"},
+    ), row=2, col=2)
+
     fig.update_layout(
-        title=f"Top {top_n} Pares mais Fortes (Real/Esperado)",
-        template="plotly_white" if tema == "Branco" else "plotly_dark",
-        height=450,
+        height=600, showlegend=False,
+        template="plotly_white",
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+        title_text="Padrões Comportamentais",
     )
     return fig
 
+
+def plot_sum_distribution(patterns, theme):
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(x=patterns["sums"], nbinsx=35, marker_color=theme["accent"], opacity=0.7, name="Soma"))
+    mean = patterns["sum_mean"]
+    std = patterns["sum_std"]
+    fig.add_vline(x=mean, line_dash="dash", line_color="red", annotation_text=f"Média: {mean:.1f}")
+    fig.add_vline(x=mean + std, line_dash="dot", line_color="orange", annotation_text=f"+1σ")
+    fig.add_vline(x=mean - std, line_dash="dot", line_color="orange", annotation_text=f"-1σ")
+    fig.update_layout(
+        title="Histograma da Soma das Dezenas (Curva de Distribuição)",
+        xaxis_title="Soma", yaxis_title="Frequência",
+        template="plotly_white", height=420,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
+
+def plot_prime_impar_summary(patterns, theme):
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("Média Ímpar/Par", "Média Primos por Sorteio"),
+                        specs=[[{"type": "pie"}, {"type": "indicator"}]])
+    imp = patterns["impar_ratio_mean"]
+    fig.add_trace(go.Pie(
+        labels=["Ímpares", "Pares"], values=[imp, 1 - imp],
+        marker_colors=[theme["accent"], "#FF6B6B"], hole=0.4,
+    ), row=1, col=1)
+    fig.add_trace(go.Indicator(
+        mode="number", value=patterns["prime_mean"],
+        title={"text": "Primos/sorteio"},
+        number={"valueformat": ".2f"},
+    ), row=1, col=2)
+    fig.update_layout(
+        height=380, template="plotly_white",
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
+
+def plot_backtest_results(results, theme):
+    labels = [k for k, v in results.items() if v > 0 or k != "Nenhum"]
+    values = [results[k] for k in labels]
+    fig = go.Figure(data=[go.Bar(x=labels, y=values, marker_color=theme["accent"], text=values, textposition="auto")])
+    fig.update_layout(
+        title="Resultado do Backtesting",
+        xaxis_title="Categoria de Prêmio", yaxis_title="Ocorrências",
+        template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
 
 # ============================================================
-# UI LAYER
+# APP PRINCIPAL
 # ============================================================
+
 def main():
     st.set_page_config(page_title="Motor Analítico de Loterias", page_icon="🎲", layout="wide")
-    st.title("🎲 Motor Analítico & Gerador de Apostas Multi-Loteria")
-    st.caption("Análise estatística, coocorrência, Monte Carlo e geração de apostas.")
+    apply_theme_css()
+    theme = get_theme()
 
-    # Barra lateral
+    st.title("🎲 Motor Analítico & Gerador de Apostas Multi-Loteria")
+    st.markdown("<span class='section-title'>Análise estatística avançada · Monte Carlo · Backtesting · Exportação Excel</span>", unsafe_allow_html=True)
+
+    # ---------- SIDEBAR ----------
     with st.sidebar:
         st.header("⚙️ Configurações")
-        nome_loteria = st.selectbox("Loteria", list(LOTERIAS.keys()), index=0)
-        cfg = LOTERIAS[nome_loteria]
-        tema = st.radio("Tema", ["Branco", "Azul"], index=0)
-        n_concursos = st.slider("Histórico (concursos simulados)", 50, 500, 300, step=50)
-        n_sim_mc = st.slider("Simulações Monte Carlo", 100, 2000, 500, step=100)
-        st.markdown("---")
-        st.markdown(f"**Dezenas:** {cfg['dezenas']}  \n**Aposta padrão:** {cfg['tamanho_aposta']}")
-        if cfg.get("extras"):
-            st.markdown(f"**Extra:** {cfg['extras']['nome']}")
+        st.session_state["theme"] = st.radio("Tema", ["Branco", "Azul"], index=0 if st.session_state.get("theme", "Branco") == "Branco" else 1)
+        theme = get_theme()
+        apply_theme_css()
 
-    # Carrega dados
-    df = gerar_historico(nome_loteria, n_concursos)
-    dezenas_lista = obter_dezenas_df(df)
+        st.divider()
+        lottery_name = st.selectbox("🎯 Loteria", list(LOTTERIES.keys()), index=0)
+        cfg = LOTTERIES[lottery_name]
 
-    df_freq = calcular_frequencia(dezenas_lista, cfg["dezenas"])
-    df_atraso = calcular_atraso(dezenas_lista, cfg["dezenas"])
-    matriz = matriz_coocorrencia(dezenas_lista, cfg["dezenas"])
-    df_pares = forca_pares(dezenas_lista, cfg["dezenas"], cfg["tamanho_aposta"], n_sim=n_sim_mc)
+        st.divider()
+        st.subheader("📁 Ingestão de Dados")
+        uploaded_file = st.file_uploader("Subir CSV ou Excel", type=["csv", "xlsx", "xls"])
+        st.caption("Colunas de dezenas devem começar com 'd' ou 'bola'. Caso contrário, serão inferidas.")
 
-    # Abas
-    tab_resumo, tab_freq, tab_atraso, tab_cooc, tab_mc, tab_gerador = st.tabs([
-        "📋 Resumo", "📊 Frequência", "⏳ Atraso", "🔥 Coocorrência", "🎯 Monte Carlo", "🎟️ Gerador",
+        use_mock = st.checkbox("Usar dados mockados como fallback", value=True)
+
+        st.divider()
+        st.subheader("🎲 Gerador de Apostas")
+        n_bets = st.slider("Número de apostas", 1, 50, 10)
+        strategy = st.selectbox("Estratégia", ["híbrido", "frequentes", "atrasadas", "aleatória"], index=0)
+        w_freq = st.slider("Peso Frequência", 0.0, 1.0, 0.4, 0.05)
+        w_delay = st.slider("Peso Atraso", 0.0, 1.0, 0.3, 0.05)
+        w_pairs = st.slider("Peso Pares Fortes", 0.0, 1.0, 0.3, 0.05)
+
+    # ---------- CARREGAR DADOS ----------
+    df_data = None
+    if uploaded_file is not None:
+        processed = process_uploaded_file(uploaded_file, lottery_name)
+        if processed is not None:
+            df_data = processed
+            st.sidebar.success(f"✅ Arquivo carregado: {len(df_data)} sorteios")
+
+    if df_data is None and use_mock:
+        df_data = generate_mock_data(lottery_name, n_draws=300)
+        st.sidebar.info(f"📊 Dados mockados: {len(df_data)} sorteios")
+
+    if df_data is None:
+        st.warning("Suba um arquivo ou ative os dados mockados para começar.")
+        return
+
+    draws_matrix = get_dezenas_matrix(df_data, lottery_name)
+    n_draws = len(draws_matrix)
+
+    # ---------- MÉTRICAS GERAIS ----------
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        metric_card("Sorteios Analisados", n_draws, "Histórico")
+    with col2:
+        metric_card("Dezenas por Aposta", cfg["dezenas_aposta"], lottery_name)
+    with col3:
+        metric_card("Universo", cfg["dezenas_total"], "Total de dezenas")
+    with col4:
+        freq = compute_frequency(draws_matrix, cfg["dezenas_total"])
+        top_num = max(freq, key=freq.get)
+        metric_card("Dezena + Frequente", f"{top_num} ({freq[top_num]}x)", "No histórico")
+
+    st.divider()
+
+    # ---------- TABS ----------
+    tab_gerador, tab_padroes, tab_backtest, tab_dados = st.tabs([
+        "🎰 Gerador de Apostas", "📊 Padrões", "🔬 Backtesting", "📋 Dados"
     ])
 
-    with tab_resumo:
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Concursos analisados", len(df))
-        col2.metric("Dezena + frequente", int(df_freq.iloc[0]["dezena"]), f"{int(df_freq.iloc[0]['frequencia'])}x")
-        col3.metric("Dezena + atrasada", int(df_atraso.iloc[0]["dezena"]), f"{int(df_atraso.iloc[0]['atraso'])} concursos")
-        col4.metric("Par + forte", df_pares.iloc[0]["par"], f"{df_pares.iloc[0]['forca']:.2f}x")
-        st.markdown("### Últimos concursos")
-        st.dataframe(df.tail(10), use_container_width=True, hide_index=True)
-
-    with tab_freq:
-        st.plotly_chart(plot_frequencia_bar(df_freq, tema, cfg["cor"]), use_container_width=True)
-        st.markdown("### Tabela de Frequência")
-        st.dataframe(df_freq, use_container_width=True, hide_index=True)
-
-    with tab_atraso:
-        st.plotly_chart(plot_atraso_bar(df_atraso, tema, "orange"), use_container_width=True)
-        st.markdown("### Tabela de Atraso")
-        st.dataframe(df_atraso, use_container_width=True, hide_index=True)
-
-    with tab_cooc:
-        st.markdown("### Heatmap Interativo de Coocorrência")
-        st.plotly_chart(plot_heatmap_coocorrencia(matriz, tema), use_container_width=True)
-        st.markdown("### Top 20 Pares mais Frequentes")
-        top_pares = (
-            pd.DataFrame([
-                {"par": f"{i+1:02d}-{j+1:02d}", "d1": i + 1, "d2": j + 1, "coocorrencia": int(matriz[i, j])}
-                for i, j in combinations(range(cfg["dezenas"]), 2)
-            ])
-            .sort_values("coocorrencia", ascending=False)
-            .head(20)
-            .reset_index(drop=True)
-        )
-        st.dataframe(top_pares, use_container_width=True, hide_index=True)
-
-    with tab_mc:
-        st.markdown("### Análise Monte Carlo — Força dos Pares (Real/Esperado)")
-        st.caption(f"Simulações: {n_sim_mc} | Tamanho aposta: {cfg['tamanho_aposta']} | Universo: {cfg['dezenas']}")
-        st.plotly_chart(plot_forca_pares_bar(df_pares, tema, top_n=25), use_container_width=True)
-        st.markdown("### Tabela de Força dos Pares")
-        st.dataframe(df_pares.head(50), use_container_width=True, hide_index=True)
-
+    # ===== TAB: GERADOR =====
     with tab_gerador:
-        st.markdown("### 🎟️ Gerador de Apostas")
-        col_g1, col_g2, col_g3 = st.columns(3)
-        with col_g1:
-            estrategia = st.selectbox(
-                "Estratégia",
-                ["Aleatório", "Mais Frequentes", "Pares Fortes", "Dezenas Atrasadas"],
-                index=0,
-            )
-        with col_g2:
-            tamanho = st.slider(
-                "Tamanho da aposta",
-                min_value=cfg["min_aposta"],
-                max_value=cfg["max_aposta"],
-                value=cfg["tamanho_aposta"],
-            )
-        with col_g3:
-            qtd_apostas = st.number_input("Quantidade de apostas", 1, 20, 5)
+        st.header("🎰 Gerador de Apostas Otimizado")
+        st.markdown("Combina **frequência**, **atraso** e **pares fortes (Monte Carlo)** com otimização via `itertools`.")
 
-        if st.button("🎲 Gerar Apostas", type="primary"):
-            st.markdown("### Apostas Geradas")
-            apostas_geradas = []
-            for k in range(int(qtd_apostas)):
-                seed = random.randint(0, 10**9) if estrategia == "Aleatório" else None
-                aposta = gerar_aposta(
-                    estrategia, cfg, df_freq, df_atraso, df_pares, tamanho, seed=seed
+        if st.button("⚡ Gerar Apostas", type="primary"):
+            with st.spinner("Gerando apostas otimizadas..."):
+                bets, freq, delays, real_pairs = generate_bets(
+                    lottery_name, draws_matrix, n_bets=n_bets,
+                    strategy=strategy, weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs
                 )
-                extra = gerar_extras(cfg, seed=random.randint(0, 10**9))
-                apostas_geradas.append({
-                    "#": k + 1,
-                    "Estratégia": estrategia,
-                    "Dezenas": " - ".join(f"{d:02d}" for d in aposta),
-                    cfg["extras"]["nome"] if cfg.get("extras") else "Extra": extra if extra else "-",
-                })
-            st.dataframe(pd.DataFrame(apostas_geradas), use_container_width=True, hide_index=True)
+                strong_pairs = find_strong_pairs(real_pairs, top_n=20)
+                st.session_state["bets"] = bets
+                st.session_state["freq"] = freq
+                st.session_state["delays"] = delays
+                st.session_state["strong_pairs"] = strong_pairs
 
-            # Visualização da primeira aposta
-            st.markdown("### Visualização da Primeira Aposta")
-            primeira = [int(x) for x in apostas_geradas[0]["Dezenas"].split(" - ")]
-            mask = pd.DataFrame({
-                "dezena": range(1, cfg["dezenas"] + 1),
-                "selecionada": [1 if d in primeira else 0 for d in range(1, cfg["dezenas"] + 1)],
-            })
-            fig = px.bar(
-                mask,
-                x="dezena",
-                y="selecionada",
-                color="selecionada",
-                color_continuous_scale=["#cccccc", cfg["cor"]],
-                labels={"dezena": "Dezena", "selecionada": "Selecionada"},
+        if "bets" in st.session_state and st.session_state["bets"]:
+            bets = st.session_state["bets"]
+            freq = st.session_state["freq"]
+            delays = st.session_state["delays"]
+            strong_pairs = st.session_state["strong_pairs"]
+
+            st.subheader(f"{len(bets)} Apostas Geradas")
+            df_bets = pd.DataFrame(bets, columns=[f"d{i+1}" for i in range(len(bets[0]))])
+            df_bets.insert(0, "#", range(1, len(bets) + 1))
+            st.dataframe(df_bets, use_container_width=True, hide_index=True)
+
+            # Visualização colorida
+            st.markdown("### Visualização")
+            cols = st.columns(min(len(bets), 5))
+            for i, bet in enumerate(bets[:10]):
+                with cols[i % len(cols)]:
+                    balls = " ".join([f"<span style='display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:50%;background:{theme['accent']};color:white;font-weight:bold;margin:2px;font-size:0.75rem;'>{n}</span>" for n in bet])
+                    st.markdown(f"<div style='padding:8px;background:{theme['card']};border-radius:10px;margin:4px 0;'><b>Aposta {i+1}</b><br>{balls}</div>", unsafe_allow_html=True)
+
+            # Gráficos de frequência e atraso
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                st.plotly_chart(plot_frequency_bar(freq, cfg["dezenas_total"], theme), use_container_width=True)
+            with col_g2:
+                st.plotly_chart(plot_delays_bar(delays, cfg["dezenas_total"], theme), use_container_width=True)
+
+            # Pares fortes
+            st.subheader("🔗 Pares Fortes (Monte Carlo + Histórico)")
+            df_pairs = pd.DataFrame(strong_pairs, columns=["Par", "Ocorrências"])
+            df_pairs["Dezena_A"] = df_pairs["Par"].apply(lambda x: x[0])
+            df_pairs["Dezena_B"] = df_pairs["Par"].apply(lambda x: x[1])
+            st.dataframe(df_pairs[["Dezena_A", "Dezena_B", "Ocorrências"]].head(15), use_container_width=True, hide_index=True)
+
+            # Exportação Excel
+            st.subheader("📥 Exportação Excel")
+            excel_data = export_to_excel(bets, freq, delays, strong_pairs, lottery_name)
+            st.download_button(
+                label="📊 Baixar Apostas em Excel (.xlsx)",
+                data=excel_data,
+                file_name=f"apostas_{lottery_name.replace(' ', '_').replace('+', 'mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
-            fig.update_layout(
-                template="plotly_white" if tema == "Branco" else "plotly_dark",
-                height=300,
-                showlegend=False,
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            st.caption("O arquivo Excel contém 4 abas: **Apostas**, **Frequência**, **Atrasos** e **Pares Fortes**.")
+        else:
+            st.info("Clique em **⚡ Gerar Apostas** para criar combinações otimizadas.")
+
+    # ===== TAB: PADRÕES =====
+    with tab_padroes:
+        st.header("📊 Padrões Comportamentais")
+        st.markdown("Análise estatística do histórico: proporção ímpar/par, números primos e distribuição da soma.")
+
+        patterns = compute_patterns(draws_matrix, cfg["dezenas_total"])
+
+        col_p1, col_p2, col_p3 = st.columns(3)
+        with col_p1:
+            metric_card("Média Ímpar/Par", f"{patterns['impar_ratio_mean']:.1%}", "Proporção de ímpares")
+        with col_p2:
+            metric_card("Média Primos", f"{patterns['prime_mean']:.2f}", "Por sorteio")
+        with col_p3:
+            metric_card("Média da Soma", f"{patterns['sum_mean']:.1f}", f"σ = {patterns['sum_std']:.1f}")
+
+        st.plotly_chart(plot_prime_impar_summary(patterns, theme), use_container_width=True)
+        st.plotly_chart(plot_sum_distribution(patterns, theme), use_container_width=True)
+        st.plotly_chart(plot_patterns(patterns, theme), use_container_width=True)
+
+    # ===== TAB: BACKTESTING =====
+    with tab_backtest:
+        st.header("🔬 Backtesting no Histórico")
+        st.markdown("Cruza as apostas geradas com todo o histórico para verificar quantas vezes teriam ganho prêmios.")
+
+        if "bets" not in st.session_state or not st.session_state["bets"]:
+            st.warning("Gere apostas primeiro na aba **Gerador de Apostas**.")
+        else:
+            bets = st.session_state["bets"]
+            st.info(f"{len(bets)} apostas carregadas para backtesting contra {n_draws} sorteios.")
+
+            if st.button("🧪 Testar no Histórico", type="primary"):
+                with st.spinner("Executando backtesting..."):
+                    results, df_detail = run_backtest(bets, draws_matrix, lottery_name)
+                    st.session_state["backtest_results"] = results
+                    st.session_state["backtest_detail"] = df_detail
+
+            if "backtest_results" in st.session_state:
+                results = st.session_state["backtest_results"]
+                df_detail = st.session_state["backtest_detail"]
+
+                st.plotly_chart(plot_backtest_results(results, theme), use_container_width=True)
+
+                st.subheader("Resumo de Prêmios")
+                df_res = pd.DataFrame([{"Prêmio": k, "Ocorrências": v} for k, v in results.items() if v > 0])
+                if not df_detail.empty:
+                    col_b1, col_b2 = st.columns([1, 2])
+                    with col_b1:
+                        st.dataframe(df_res, use_container_width=True, hide_index=True)
+                    with col_b2:
+                        st.markdown("### Detalhamento de Acertos")
+                        st.dataframe(df_detail.head(50), use_container_width=True, hide_index=True)
+                else:
+                    st.dataframe(df_res, use_container_width=True, hide_index=True)
+                    st.info("Nenhum prêmio encontrado no histórico com as apostas atuais. Tente gerar mais apostas ou outra estratégia.")
+
+    # ===== TAB: DADOS =====
+    with tab_dados:
+        st.header("📋 Dados do Histórico")
+        st.dataframe(df_data.head(100), use_container_width=True)
+        st.caption(f"Total: {len(df_data)} sorteios | Loteria: {lottery_name}")
+
+        if st.checkbox("Mostrar estatísticas descritivas"):
+            st.dataframe(df_data.describe(), use_container_width=True)
+
+    # ---------- FOOTER ----------
+    st.divider()
+    st.markdown(
+        f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>"
+        f"Motor Analítico de Loterias · Streamlit + Plotly + xlsxwriter · "
+        f"{datetime.now().year} · Jogue com responsabilidade.</div>",
+        unsafe_allow_html=True
+    )
 
 
 if __name__ == "__main__":
