@@ -1,7 +1,7 @@
+import io
 import numpy as np
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 
 
@@ -185,25 +185,126 @@ def analisar_mes_de_sorte(df: pd.DataFrame) -> pd.DataFrame:
     return resultado.sort_values("Forca", ascending=False).reset_index(drop=True)
 
 
+def _frequencia_dezenas(df: pd.DataFrame) -> pd.Series:
+    """Retorna a frequencia de cada dezena (1 a 31) no historico."""
+    dezena_cols = [f"D{i}" for i in range(1, 8)]
+    todas = df[dezena_cols].values.flatten()
+    contagem = pd.Series(todas).value_counts().reindex(range(1, 32), fill_value=0)
+    return contagem
+
+
+def _frequencia_meses(df: pd.DataFrame) -> pd.Series:
+    """Retorna a frequencia de cada mes (1 a 12) no historico."""
+    return df["Mes_Sorte"].value_counts().reindex(range(1, 13), fill_value=0)
+
+
+def gerar_apostas(
+    df: pd.DataFrame,
+    qtd_jogos: int,
+    dezenas_por_jogo: int,
+    estrategia: str,
+) -> pd.DataFrame:
+    """Gera jogos para a loteria Dia de Sorte.
+
+    Estrategias:
+      - "Aleatorio": dezenas e mes 100% aleatorios.
+      - "Mais Frequentes": pondera dezenas e meses pela frequencia historica.
+      - "Pares Fortes": garante o par mais forte da estatistica no jogo.
+
+    Retorna um DataFrame com colunas: Jogo, Dezenas, Mes de Sorte.
+    """
+    rng = np.random.default_rng()
+    universo = np.arange(1, 32)
+    meses = np.arange(1, 13)
+
+    freq_dez = _frequencia_dezenas(df).astype(float)
+    freq_mes = _frequencia_meses(df).astype(float)
+
+    pesos_dez = freq_dez.to_numpy()
+    pesos_mes = freq_mes.to_numpy()
+
+    if pesos_dez.sum() == 0:
+        pesos_dez = np.ones_like(pesos_dez, dtype=float)
+    if pesos_mes.sum() == 0:
+        pesos_mes = np.ones_like(pesos_mes, dtype=float)
+
+    prob_dez = pesos_dez / pesos_dez.sum()
+    prob_mes = pesos_mes / pesos_mes.sum()
+
+    par_forte = None
+    if estrategia == "Pares Fortes":
+        analise_pares = analisar_dia_de_sorte(df, n_simulacoes=100)
+        if not analise_pares.empty:
+            linha = analise_pares.iloc[0]
+            par_forte = (int(linha["Dezena_A"]), int(linha["Dezena_B"]))
+
+    jogos = []
+    for idx in range(1, qtd_jogos + 1):
+        if estrategia == "Aleatorio":
+            escolhidas = rng.choice(
+                universo, size=dezenas_por_jogo, replace=False
+            )
+            mes = int(rng.choice(meses))
+
+        elif estrategia == "Mais Frequentes":
+            escolhidas = rng.choice(
+                universo,
+                size=dezenas_por_jogo,
+                replace=False,
+                p=prob_dez,
+            )
+            mes = int(rng.choice(meses, p=prob_mes))
+
+        elif estrategia == "Pares Fortes":
+            if par_forte is not None:
+                base = set(par_forte)
+                restantes = [d for d in universo if d not in base]
+                qtd_restante = dezenas_por_jogo - len(base)
+                complemento = rng.choice(
+                    restantes, size=qtd_restante, replace=False
+                )
+                escolhidas = np.array(sorted(list(base) + complemento.tolist()))
+            else:
+                escolhidas = rng.choice(
+                    universo, size=dezenas_por_jogo, replace=False
+                )
+            mes = int(rng.choice(meses))
+
+        else:
+            raise ValueError(f"Estrategia desconhecida: {estrategia}")
+
+        dezenas_ordenadas = sorted(int(d) for d in escolhidas)
+        jogos.append(
+            {
+                "Jogo": idx,
+                "Dezenas": ", ".join(f"{d:02d}" for d in dezenas_ordenadas),
+                "Mes de Sorte": mes,
+            }
+        )
+
+    return pd.DataFrame(jogos, columns=["Jogo", "Dezenas", "Mes de Sorte"])
+
+
 # -----------------------------------------------------------------------------
 # UI Layer
 # -----------------------------------------------------------------------------
 
 def render_dashboard(df: pd.DataFrame):
     st.title("Dia de Sorte - Analise Estatistica")
-    st.caption("Analise de pares, coocorrencia, base de dados e Mes da Sorte.")
+    st.caption("Analise de pares, coocorrencia, base de dados, Mes da Sorte e gerador de apostas.")
 
     with st.spinner("Processando analises..."):
         analise_pares = analisar_dia_de_sorte(df, n_simulacoes=200)
         matriz = matriz_coocorrencia(df)
         analise_mes = analisar_mes_de_sorte(df)
 
-    tab1, tab2, tab3, tab4 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
         [
             "Analise de Forca (Pares)",
             "Heatmap de Coocorrencia",
             "Base de Dados",
             "Mes de Sorte",
+            "Gerador de Apostas",
         ]
     )
 
@@ -336,6 +437,70 @@ def render_dashboard(df: pd.DataFrame):
         )
         fig_mes.update_layout(xaxis_tickangle=-45)
         st.plotly_chart(fig_mes, use_container_width=True)
+
+    # --- Tab 5: Gerador de Apostas ---
+    with tab5:
+        st.subheader("Gerador de Apostas - Dia de Sorte")
+        st.markdown(
+            "<div class='metric-card'>"
+            "Gere jogos personalizados usando diferentes estrategias baseadas no historico."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        st.write("")
+
+        col_sel1, col_sel2, col_sel3 = st.columns(3)
+        with col_sel1:
+            qtd_jogos = st.number_input(
+                "Quantidade de Jogos:",
+                min_value=1,
+                max_value=100,
+                value=5,
+                step=1,
+                key="qtd_jogos",
+            )
+        with col_sel2:
+            dezenas_por_jogo = st.number_input(
+                "Dezenas por Jogo:",
+                min_value=7,
+                max_value=15,
+                value=7,
+                step=1,
+                key="dezenas_por_jogo",
+            )
+        with col_sel3:
+            estrategia = st.selectbox(
+                "Estrategia:",
+                options=["Aleatorio", "Mais Frequentes", "Pares Fortes"],
+                index=0,
+                key="estrategia_apostas",
+            )
+
+        st.write("")
+        if st.button("Gerar Apostas", key="btn_gerar_apostas", type="primary"):
+            with st.spinner("Gerando apostas..."):
+                apostas = gerar_apostas(
+                    df=df,
+                    qtd_jogos=int(qtd_jogos),
+                    dezenas_por_jogo=int(dezenas_por_jogo),
+                    estrategia=estrategia,
+                )
+
+            st.session_state["apostas_geradas"] = apostas
+
+        if "apostas_geradas" in st.session_state:
+            apostas = st.session_state["apostas_geradas"]
+            st.success(f"{len(apostas)} jogo(s) gerado(s) com a estrategia '{estrategia}'.")
+            st.dataframe(apostas, use_container_width=True, hide_index=True)
+
+            csv_buffer = io.StringIO()
+            apostas.to_csv(csv_buffer, index=False)
+            st.download_button(
+                label="Baixar apostas (CSV)",
+                data=csv_buffer.getvalue().encode("utf-8"),
+                file_name="apostas_dia_de_sorte.csv",
+                mime="text/csv",
+            )
 
 
 # -----------------------------------------------------------------------------
