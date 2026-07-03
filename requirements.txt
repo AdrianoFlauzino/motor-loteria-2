@@ -1,4 +1,4 @@
-markdown   streamlit
-   pandas
-   numpy
-   plotly
+streamlit
+pandas
+numpy
+plotly
