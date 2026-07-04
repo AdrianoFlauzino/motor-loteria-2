@@ -9,6 +9,7 @@ import random
 from io import BytesIO
 from collections import Counter
 from datetime import datetime, timedelta
+import requests
 
 try:
     import xlsxwriter
@@ -129,6 +130,52 @@ def generate_mock_data(lottery_name, n_draws=300):
             row[f"d{j+1}"] = n
         rows.append(row)
     return pd.DataFrame(rows)
+
+# ============================================================
+# API PÚBLICA DE LOTERIAS
+# ============================================================
+def fetch_latest_results(lottery_name):
+    """
+    Busca o último resultado da loteria via API pública.
+    Utiliza a API loteriascaixa-api.herokuapp.com
+    Retorna um DataFrame no formato esperado ou None em caso de erro.
+    """
+    # Mapeamento dos nomes usados pela API
+    api_names = {
+        "Mega Sena": "megasena",
+        "Lotofácil": "lotofacil",
+        "Quina": "quina",
+        "+Milionária": "maismilionaria",
+        "Dia de Sorte": "diadesorte"
+    }
+    slug = api_names.get(lottery_name)
+    if not slug:
+        st.error(f"Loteria não suportada para busca online: {lottery_name}")
+        return None
+    url = f"https://loteriascaixa-api.herokuapp.com/api/{slug}/latest"
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        # Estrutura esperada: { "concurso": 1234, "data": "01/01/2025", "dezenas": [1,2,3,4,5,6] }
+        if not all(k in data for k in ("concurso", "data", "dezenas")):
+            st.error("Formato inesperado da resposta da API.")
+            return None
+        dezenas = data["dezenas"]
+        if len(dezenas) < LOTTERIES[lottery_name]["dezenas_aposta"]:
+            st.warning(f"Número de dezenas retornado incompatível com {lottery_name}.")
+            return None
+        row = {"concurso": data["concurso"], "data": data["data"]}
+        for i, d in enumerate(dezenas[:LOTTERIES[lottery_name]["dezenas_aposta"]], start=1):
+            row[f"d{i}"] = d
+        df = pd.DataFrame([row])
+        return df
+    except requests.exceptions.RequestException as e:
+        st.error(f"Erro ao acessar API: {e}")
+        return None
+    except Exception as e:
+        st.error(f"Erro inesperado: {e}")
+        return None
 
 # ============================================================
 # INGESTÃO DE DADOS
@@ -544,6 +591,20 @@ def main():
         use_mock = st.checkbox("Usar dados mockados como fallback", value=True)
 
         st.divider()
+        st.subheader("🌐 Atualização Online")
+        if st.button("Buscar últimos resultados online"):
+            with st.spinner("Buscando dados da API pública..."):
+                online_df = fetch_latest_results(lottery_name)
+                if online_df is not None:
+                    st.session_state["df_online"] = online_df
+                    st.session_state["use_online"] = True
+                    st.success(f"Último resultado carregado: concurso {online_df['concurso'].iloc[0]}")
+                else:
+                    st.session_state["use_online"] = False
+        if st.session_state.get("use_online"):
+            st.info("Usando dados do último sorteio online.")
+
+        st.divider()
         st.subheader("🎲 Gerador de Apostas")
         n_bets = st.slider("Número de apostas", 1, 50, 10)
         strategy = st.selectbox("Estratégia", ["híbrido", "frequentes", "atrasadas", "aleatória"], index=0)
@@ -553,18 +614,21 @@ def main():
 
     # ---------- CARREGAR DADOS ----------
     df_data = None
+    # Prioridade: arquivo enviado > dados online > mock
     if uploaded_file is not None:
         processed = process_uploaded_file(uploaded_file, lottery_name)
         if processed is not None:
             df_data = processed
             st.sidebar.success(f"✅ Arquivo carregado: {len(df_data)} sorteios")
-
-    if df_data is None and use_mock:
+            st.session_state["use_online"] = False  # desativa online se arquivo é carregado
+    elif st.session_state.get("use_online") and "df_online" in st.session_state:
+        df_data = st.session_state["df_online"]
+        st.sidebar.info(f"📡 Dados online: {len(df_data)} sorteio(s)")
+    elif use_mock:
         df_data = generate_mock_data(lottery_name, n_draws=300)
         st.sidebar.info(f"📊 Dados mockados: {len(df_data)} sorteios")
-
-    if df_data is None:
-        st.warning("Suba um arquivo ou ative os dados mockados para começar.")
+    else:
+        st.warning("Suba um arquivo, busque online ou ative os dados mockados para começar.")
         return
 
     draws_matrix = get_dezenas_matrix(df_data, lottery_name)
@@ -586,8 +650,8 @@ def main():
     st.divider()
 
     # ---------- TABS ----------
-    tab_gerador, tab_padroes, tab_backtest, tab_dados = st.tabs([
-        "🎰 Gerador de Apostas", "📊 Padrões", "🔬 Backtesting", "📋 Dados"
+    tab_gerador, tab_padroes, tab_backtest, tab_fechamento, tab_dados = st.tabs([
+        "🎰 Gerador de Apostas", "📊 Padrões", "🔬 Backtesting", "🔢 Fechamento Matemático", "📋 Dados"
     ])
 
     # ===== TAB: GERADOR =====
@@ -678,7 +742,7 @@ def main():
         st.markdown("Cruza as apostas geradas com todo o histórico para verificar quantas vezes teriam ganho prêmios.")
 
         if "bets" not in st.session_state or not st.session_state["bets"]:
-            st.warning("Gere apostas primeiro na aba **Gerador de Apostas**.")
+            st.warning("Gere apostas primeiro na aba **Gerador de Apostas** ou **Fechamento Matemático**.")
         else:
             bets = st.session_state["bets"]
             st.info(f"{len(bets)} apostas carregadas para backtesting contra {n_draws} sorteios.")
@@ -707,6 +771,97 @@ def main():
                 else:
                     st.dataframe(df_res, use_container_width=True, hide_index=True)
                     st.info("Nenhum prêmio encontrado no histórico com as apostas atuais. Tente gerar mais apostas ou outra estratégia.")
+
+    # ===== TAB: FECHAMENTO MATEMÁTICO =====
+    with tab_fechamento:
+        st.header("🔢 Fechamento Matemático")
+        st.markdown("Selecione um conjunto maior de dezenas (ex: 10 a 15) e o sistema gerará **todas as combinações possíveis** (fechamento total) para o tamanho da aposta da loteria selecionada.")
+
+        total_dezenas = cfg["dezenas_total"]
+        aposta_size = cfg["dezenas_aposta"]
+
+        # Entrada do usuário: escolher dezenas
+        st.markdown(f"Escolha de **{aposta_size + 1}** a **{min(15, total_dezenas)}** dezenas entre 1 e {total_dezenas}.")
+        # Usamos um text_area para entrada manual
+        default_numbers = list(range(1, aposta_size + 2))  # exemplo inicial
+        user_input = st.text_area(
+            "Digite as dezenas separadas por vírgula ou espaço:",
+            value=",".join(map(str, default_numbers)),
+            height=80,
+            help="Ex: 1,2,3,4,5,6,7"
+        )
+        # Processar entrada
+        import re
+        numbers_str = re.split(r"[,\s]+", user_input.strip())
+        chosen_numbers = []
+        try:
+            chosen_numbers = sorted(set(int(n) for n in numbers_str if n))
+        except ValueError:
+            st.error("Entrada inválida. Certifique-se de digitar apenas números.")
+            chosen_numbers = []
+
+        valid = False
+        if chosen_numbers:
+            if any(n < 1 or n > total_dezenas for n in chosen_numbers):
+                st.error(f"Todas as dezenas devem estar entre 1 e {total_dezenas}.")
+            elif len(chosen_numbers) < aposta_size + 1:
+                st.warning(f"Escolha pelo menos {aposta_size + 1} dezenas para gerar combinações de {aposta_size}.")
+            else:
+                valid = True
+
+        if valid:
+            # Calcular número total de combinações
+            total_combos = len(list(itertools.combinations(chosen_numbers, aposta_size)))
+            st.info(f"Você selecionou **{len(chosen_numbers)}** dezenas. Serão geradas **{total_combos}** apostas (combinações de {aposta_size}).")
+
+            if st.button("Gerar Fechamento", type="primary"):
+                with st.spinner("Calculando combinações..."):
+                    combinations = list(itertools.combinations(chosen_numbers, aposta_size))
+                    bets = [sorted(combo) for combo in combinations]
+                    st.session_state["bets"] = bets
+                    # As análises de freq/delays/real_pairs são do histórico, mas para exportação precisamos delas.
+                    # Podemos recalcular ou usar as da última geração, mas não temos garantia. Vamos recalcular.
+                    freq_session = compute_frequency(draws_matrix, total_dezenas)
+                    delays_session = compute_delays(draws_matrix, total_dezenas)
+                    _, real_pairs_session = monte_carlo_pairs(draws_matrix, total_dezenas, iterations=3000)
+                    strong_pairs_session = find_strong_pairs(real_pairs_session, top_n=20)
+                    st.session_state["freq"] = freq_session
+                    st.session_state["delays"] = delays_session
+                    st.session_state["strong_pairs"] = strong_pairs_session
+                    st.success(f"{len(bets)} apostas geradas com sucesso!")
+
+        # Exibição das apostas geradas por fechamento (se existirem)
+        if "bets" in st.session_state and st.session_state["bets"]:
+            bets = st.session_state["bets"]
+            # Verificar se o tamanho da aposta bate (pode ser de fechamento ou gerador)
+            if len(bets[0]) == aposta_size:
+                st.subheader(f"{len(bets)} Apostas do Fechamento")
+                df_bets = pd.DataFrame(bets, columns=[f"d{i+1}" for i in range(aposta_size)])
+                df_bets.insert(0, "#", range(1, len(bets) + 1))
+                st.dataframe(df_bets.head(100), use_container_width=True, hide_index=True)
+                if len(bets) > 100:
+                    st.caption(f"Mostrando as primeiras 100 de {len(bets)} apostas.")
+
+                # Exportação (reutiliza a função existente)
+                if "freq" in st.session_state and "delays" in st.session_state and "strong_pairs" in st.session_state:
+                    st.subheader("📥 Exportação Excel")
+                    excel_data = export_to_excel(
+                        bets,
+                        st.session_state["freq"],
+                        st.session_state["delays"],
+                        st.session_state["strong_pairs"],
+                        lottery_name
+                    )
+                    st.download_button(
+                        label="📊 Baixar Fechamento em Excel (.xlsx)",
+                        data=excel_data,
+                        file_name=f"fechamento_{lottery_name.replace(' ', '_').replace('+', 'mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                else:
+                    st.info("As análises estatísticas não estão disponíveis. Gere as apostas primeiro.")
+            else:
+                st.info("As apostas atuais foram geradas pelo Gerador de Apostas (tamanho diferente). Para usar o fechamento, gere novamente nesta aba.")
 
     # ===== TAB: DADOS =====
     with tab_dados:
