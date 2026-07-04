@@ -9,7 +9,11 @@ import random
 from io import BytesIO
 from collections import Counter
 from datetime import datetime, timedelta
-import requests
+
+try:
+    import requests
+except ImportError:
+    requests = None
 
 try:
     import xlsxwriter
@@ -140,6 +144,10 @@ def fetch_latest_results(lottery_name):
     Utiliza a API loteriascaixa-api.herokuapp.com
     Retorna um DataFrame no formato esperado ou None em caso de erro.
     """
+    if requests is None:
+        st.error("A biblioteca 'requests' não está instalada no ambiente. Instale com `pip install requests` para buscar resultados online.")
+        return None
+
     # Mapeamento dos nomes usados pela API
     api_names = {
         "Mega Sena": "megasena",
@@ -429,19 +437,25 @@ def export_to_excel(bets, freq, delays, strong_pairs, lottery_name):
     df_pairs = df_pairs[["Dezena_A", "Dezena_B", "Ocorrências"]]
 
     output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        df_bets.to_excel(writer, sheet_name="Apostas", index=False)
-        df_freq.to_excel(writer, sheet_name="Frequência", index=False)
-        df_delays.to_excel(writer, sheet_name="Atrasos", index=False)
-        df_pairs.to_excel(writer, sheet_name="Pares Fortes", index=False)
+    if xlsxwriter is not None:
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df_bets.to_excel(writer, sheet_name="Apostas", index=False)
+            df_freq.to_excel(writer, sheet_name="Frequência", index=False)
+            df_delays.to_excel(writer, sheet_name="Atrasos", index=False)
+            df_pairs.to_excel(writer, sheet_name="Pares Fortes", index=False)
 
-        wb = writer.book
-        header_fmt = wb.add_format({"bold": True, "bg_color": "#1E90FF", "font_color": "white", "border": 1})
-        for sheet_name in ["Apostas", "Frequência", "Atrasos", "Pares Fortes"]:
-            ws = writer.sheets[sheet_name]
-            for col_num, col_name in enumerate(writer.sheets[sheet_name]._url if hasattr(writer.sheets[sheet_name], "_url") else []):
-                pass
-            ws.set_column(0, 10, 18)
+            wb = writer.book
+            header_fmt = wb.add_format({"bold": True, "bg_color": "#1E90FF", "font_color": "white", "border": 1})
+            for sheet_name in ["Apostas", "Frequência", "Atrasos", "Pares Fortes"]:
+                ws = writer.sheets[sheet_name]
+                ws.set_column(0, 10, 18)
+    else:
+        # Fallback: ExcelWriter padrão (openpyxl) sem engine='xlsxwriter'
+        with pd.ExcelWriter(output) as writer:
+            df_bets.to_excel(writer, sheet_name="Apostas", index=False)
+            df_freq.to_excel(writer, sheet_name="Frequência", index=False)
+            df_delays.to_excel(writer, sheet_name="Atrasos", index=False)
+            df_pairs.to_excel(writer, sheet_name="Pares Fortes", index=False)
 
     output.seek(0)
     return output
