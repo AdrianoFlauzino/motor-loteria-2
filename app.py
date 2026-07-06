@@ -29,13 +29,27 @@ LOTTERIES = {
         "dezenas_aposta": 6,
         "max_acertos": 6,
         "premios": {4: "Quadra", 5: "Quina", 6: "Sena"},
+        "premios_estimados": {
+            "Quadra": 1000.00,
+            "Quina": 50000.00,
+            "Sena": 30000000.00,
+        },
+        "custo_aposta": 5.00,
         "color": "green",
     },
     "Lotofácil": {
         "dezenas_total": 25,
         "dezenas_aposta": 15,
         "max_acertos": 15,
-        "premios": {11: "Loteria", 12: "Loteria", 13: "Loteria", 14: "Quina", 15: "Sena"},
+        "premios": {11: "11 Acertos", 12: "12 Acertos", 13: "13 Acertos", 14: "14 Acertos", 15: "15 Acertos"},
+        "premios_estimados": {
+            "11 Acertos": 8.00,
+            "12 Acertos": 20.00,
+            "13 Acertos": 60.00,
+            "14 Acertos": 2000.00,
+            "15 Acertos": 2000000.00,
+        },
+        "custo_aposta": 3.00,
         "color": "purple",
     },
     "Quina": {
@@ -43,6 +57,13 @@ LOTTERIES = {
         "dezenas_aposta": 5,
         "max_acertos": 5,
         "premios": {2: "Duque", 3: "Terno", 4: "Quadra", 5: "Quina"},
+        "premios_estimados": {
+            "Duque": 2.00,
+            "Terno": 15.00,
+            "Quadra": 3000.00,
+            "Quina": 500000.00,
+        },
+        "custo_aposta": 2.50,
         "color": "blue",
     },
     "+Milionária": {
@@ -50,13 +71,26 @@ LOTTERIES = {
         "dezenas_aposta": 6,
         "max_acertos": 6,
         "premios": {4: "Quadra", 5: "Quina", 6: "Sena"},
+        "premios_estimados": {
+            "Quadra": 2000.00,
+            "Quina": 30000.00,
+            "Sena": 100000000.00,
+        },
+        "custo_aposta": 6.00,
         "color": "orange",
     },
     "Dia de Sorte": {
         "dezenas_total": 31,
         "dezenas_aposta": 7,
         "max_acertos": 7,
-        "premios": {4: "Quadra", 5: "Quina", 6: "Sena", 7: "Sena+Mês"},
+        "premios": {4: "4 Acertos", 5: "5 Acertos", 6: "6 Acertos", 7: "7 Acertos + Mês de Sorte"},
+        "premios_estimados": {
+            "4 Acertos": 20.00,
+            "5 Acertos": 500.00,
+            "6 Acertos": 10000.00,
+            "7 Acertos + Mês de Sorte": 500000.00,
+        },
+        "custo_aposta": 3.00,
         "color": "pink",
     },
 }
@@ -132,6 +166,16 @@ def metric_card(label, value, sub=""):
         <div style="font-size:0.75rem;opacity:0.6;">{sub}</div>
     </div>
     """, unsafe_allow_html=True)
+
+
+def format_brl(value):
+    """Formata um valor numérico no padrão de moeda brasileira (R$ 1.500,00)."""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        value = 0.0
+    return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
 
 # ============================================================
 # GERAÇÃO DE DADOS MOCKADOS
@@ -405,11 +449,18 @@ def find_strong_pairs(real_pairs, top_n=20):
 def run_backtest(bets, draws_matrix, lottery_name):
     cfg = LOTTERIES[lottery_name]
     premios = cfg["premios"]
+    premios_estimados = cfg.get("premios_estimados", {})
+    custo_aposta = cfg.get("custo_aposta", 0.0)
+
     results = {label: 0 for label in set(premios.values())}
     results["Nenhum"] = 0
     detail_rows = []
 
     bet_sets = [set(b) for b in bets]
+    n_bets = len(bets)
+    n_draws = len(draws_matrix)
+
+    retorno_total = 0.0
 
     for draw_idx, row in enumerate(draws_matrix):
         draw_set = set(int(x) for x in row)
@@ -418,16 +469,30 @@ def run_backtest(bets, draws_matrix, lottery_name):
             label = premios.get(hits, None)
             if label:
                 results[label] = results.get(label, 0) + 1
+                valor = premios_estimados.get(label, 0.0)
+                retorno_total += valor
                 detail_rows.append({
                     "Concurso": draw_idx + 1,
                     "Aposta #": bet_idx + 1,
                     "Acertos": hits,
                     "Prêmio": label,
+                    "Valor Estimado": valor,
                 })
             elif hits >= 3:
                 results["Nenhum"] += 1
 
-    return results, pd.DataFrame(detail_rows)
+    custo_total = n_bets * custo_aposta * n_draws
+    saldo = retorno_total - custo_total
+    roi = (saldo / custo_total * 100.0) if custo_total > 0 else 0.0
+
+    financeiro = {
+        "custo_total": custo_total,
+        "retorno_total": retorno_total,
+        "saldo": saldo,
+        "roi": roi,
+    }
+
+    return results, pd.DataFrame(detail_rows), financeiro
 
 # ============================================================
 # EXPORTAÇÃO EXCEL
@@ -780,25 +845,64 @@ def main():
 
             if st.button("🧪 Testar no Histórico", type="primary"):
                 with st.spinner("Executando backtesting..."):
-                    results, df_detail = run_backtest(bets, draws_matrix, lottery_name)
+                    results, df_detail, financeiro = run_backtest(bets, draws_matrix, lottery_name)
                     st.session_state["backtest_results"] = results
                     st.session_state["backtest_detail"] = df_detail
+                    st.session_state["backtest_financeiro"] = financeiro
 
             if "backtest_results" in st.session_state:
                 results = st.session_state["backtest_results"]
                 df_detail = st.session_state["backtest_detail"]
+                financeiro = st.session_state.get("backtest_financeiro", {})
 
                 st.plotly_chart(plot_backtest_results(results, theme), use_container_width=True)
+
+                # ---------- ANÁLISE FINANCEIRA (ROI) ----------
+                st.markdown("### 💰 Análise Financeira (ROI)")
+                st.markdown("Cálculo baseado no custo da aposta e prêmios estimados médios de cada loteria.")
+
+                saldo = financeiro.get("saldo", 0.0)
+                roi = financeiro.get("roi", 0.0)
+                cor_saldo = "#2ECC40" if saldo >= 0 else "#FF4136"
+                cor_roi = "#2ECC40" if roi >= 0 else "#FF4136"
+
+                col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+                with col_f1:
+                    metric_card("Custo Total", format_brl(financeiro.get("custo_total", 0.0)), f"{len(bets)} apostas × {n_draws} sorteios")
+                with col_f2:
+                    metric_card("Retorno Estimado", format_brl(financeiro.get("retorno_total", 0.0)), "Prêmios estimados")
+                with col_f3:
+                    st.markdown(f"""
+                    <div class="metric-card" style="border-left: 4px solid {cor_saldo};">
+                        <div style="font-size:0.8rem;opacity:0.8;">Saldo</div>
+                        <div style="font-size:1.6rem;font-weight:700;color:{cor_saldo};">{format_brl(saldo)}</div>
+                        <div style="font-size:0.75rem;opacity:0.6;">{'Lucro' if saldo >= 0 else 'Prejuízo'}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col_f4:
+                    st.markdown(f"""
+                    <div class="metric-card" style="border-left: 4px solid {cor_roi};">
+                        <div style="font-size:0.8rem;opacity:0.8;">ROI (%)</div>
+                        <div style="font-size:1.6rem;font-weight:700;color:{cor_roi};">{roi:.2f}%</div>
+                        <div style="font-size:0.75rem;opacity:0.6;">{'Positivo' if roi >= 0 else 'Negativo'}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                st.divider()
 
                 st.subheader("Resumo de Prêmios")
                 df_res = pd.DataFrame([{"Prêmio": k, "Ocorrências": v} for k, v in results.items() if v > 0])
                 if not df_detail.empty:
+                    # Formatar coluna Valor Estimado para exibição
+                    df_detail_display = df_detail.copy()
+                    df_detail_display["Valor Estimado"] = df_detail_display["Valor Estimado"].apply(format_brl)
+
                     col_b1, col_b2 = st.columns([1, 2])
                     with col_b1:
                         st.dataframe(df_res, use_container_width=True, hide_index=True)
                     with col_b2:
                         st.markdown("### Detalhamento de Acertos")
-                        st.dataframe(df_detail.head(50), use_container_width=True, hide_index=True)
+                        st.dataframe(df_detail_display.head(50), use_container_width=True, hide_index=True)
                 else:
                     st.dataframe(df_res, use_container_width=True, hide_index=True)
                     st.info("Nenhum prêmio encontrado no histórico com as apostas atuais. Tente gerar mais apostas ou outra estratégia.")
