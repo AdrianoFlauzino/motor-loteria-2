@@ -6,6 +6,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import itertools
 import random
+import json
 from io import BytesIO
 from collections import Counter
 from datetime import datetime, timedelta
@@ -20,11 +21,19 @@ try:
 except ImportError:
     xlsxwriter = None
 
+try:
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.metrics import accuracy_score
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+
 # ============================================================
 # CONFIGURAÇÃO DAS LOTERIAS
 # ============================================================
 LOTTERIES = {
     "Mega Sena": {
+        "slug": "megasena",
         "dezenas_total": 60,
         "dezenas_aposta": 6,
         "max_acertos": 6,
@@ -38,6 +47,7 @@ LOTTERIES = {
         "color": "green",
     },
     "Lotofácil": {
+        "slug": "lotofacil",
         "dezenas_total": 25,
         "dezenas_aposta": 15,
         "max_acertos": 15,
@@ -53,6 +63,7 @@ LOTTERIES = {
         "color": "purple",
     },
     "Quina": {
+        "slug": "quina",
         "dezenas_total": 80,
         "dezenas_aposta": 5,
         "max_acertos": 5,
@@ -67,6 +78,7 @@ LOTTERIES = {
         "color": "blue",
     },
     "+Milionária": {
+        "slug": "maismilionaria",
         "dezenas_total": 50,
         "dezenas_aposta": 6,
         "max_acertos": 6,
@@ -80,6 +92,7 @@ LOTTERIES = {
         "color": "orange",
     },
     "Dia de Sorte": {
+        "slug": "diadesorte",
         "dezenas_total": 31,
         "dezenas_aposta": 7,
         "max_acertos": 7,
@@ -220,15 +233,7 @@ def fetch_latest_results(lottery_name):
         st.error("A biblioteca 'requests' não está instalada no ambiente. Instale com `pip install requests` para buscar resultados online.")
         return None
 
-    # Mapeamento dos nomes usados pela API
-    api_names = {
-        "Mega Sena": "megasena",
-        "Lotofácil": "lotofacil",
-        "Quina": "quina",
-        "+Milionária": "maismilionaria",
-        "Dia de Sorte": "diadesorte"
-    }
-    slug = api_names.get(lottery_name)
+    slug = LOTTERIES.get(lottery_name, {}).get("slug")
     if not slug:
         st.error(f"Loteria não suportada para busca online: {lottery_name}")
         return None
@@ -466,6 +471,214 @@ def compute_spatial_analysis(draws_matrix, lottery_name):
         "rows": rows,
         "cols": cols,
     }
+
+# ============================================================
+# MACHINE LEARNING (FASE 3)
+# ============================================================
+
+def extract_features(draws_matrix, lottery_name, total_numbers):
+    """
+    Extrai features para cada dezena do universo da loteria.
+    Retorna um array numpy de shape (total_numbers, 7) com as features:
+    [freq, atraso, pair_score, linha, coluna, is_primo, is_impar]
+    """
+    freq = compute_frequency(draws_matrix, total_numbers)
+    delays = compute_delays(draws_matrix, total_numbers)
+    _, real_pairs = monte_carlo_pairs(draws_matrix, total_numbers, iterations=3000)
+
+    dims = VOLANTE_DIMS.get(lottery_name, {"rows": 10, "cols": 10})
+    cols_dim = dims["cols"]
+
+    # pair_score por dezena
+    pair_score_map = {num: 0.0 for num in range(1, total_numbers + 1)}
+    for (a, b), cnt in real_pairs.items():
+        pair_score_map[a] += cnt
+        pair_score_map[b] += cnt
+
+    max_freq = max(freq.values()) if max(freq.values()) > 0 else 1
+    max_delay = max(delays.values()) if max(delays.values()) > 0 else 1
+    max_pair = max(pair_score_map.values()) if max(pair_score_map.values()) > 0 else 1
+
+    features = []
+    for num in range(1, total_numbers + 1):
+        f_freq = freq.get(num, 0) / max_freq
+        f_atraso = delays.get(num, 0) / max_delay
+        f_pair = pair_score_map[num] / max_pair
+        linha = (num - 1) // cols_dim
+        coluna = (num - 1) % cols_dim
+        f_primo = 1 if is_prime(num) else 0
+        f_impar = 1 if num % 2 != 0 else 0
+        features.append([f_freq, f_atraso, f_pair, linha, coluna, f_primo, f_impar])
+
+    return np.array(features, dtype=float)
+
+
+def train_predictive_model(draws_matrix, lottery_name):
+    """
+    Treina um RandomForestClassifier para prever se uma dezena será sorteada
+    no próximo concurso. Retorna dict com model, probs, accuracy, features.
+    """
+    if not SKLEARN_AVAILABLE:
+        return None
+
+    cfg = LOTTERIES[lottery_name]
+    total_numbers = cfg["dezenas_total"]
+
+    features = extract_features(draws_matrix, lottery_name, total_numbers)
+
+    # Construir dataset: para cada sorteio (exceto o primeiro),
+    # X = features das dezenas, y = 1 se a dezena foi sorteada naquele concurso
+    X = []
+    y = []
+
+    for i in range(1, len(draws_matrix)):
+        drawn_set = set(int(x) for x in draws_matrix[i])
+        for num in range(1, total_numbers + 1):
+            X.append(features[num - 1])
+            y.append(1 if num in drawn_set else 0)
+
+    X = np.array(X)
+    y = np.array(y)
+
+    if len(X) == 0 or len(np.unique(y)) < 2:
+        return None
+
+    # Divisão temporal: 80% treino, 20% teste
+    split_idx = int(len(draws_matrix) * 0.8) - 1
+    n_per_draw = total_numbers
+    train_end = split_idx * n_per_draw
+
+    X_train, X_test = X[:train_end], X[train_end:]
+    y_train, y_test = y[:train_end], y[train_end:]
+
+    if len(X_train) == 0 or len(X_test) == 0 or len(np.unique(y_train)) < 2 or len(np.unique(y_test)) < 2:
+        # fallback: divisão simples
+        split = int(len(X) * 0.8)
+        X_train, X_test = X[:split], X[split:]
+        y_train, y_test = y[:split], y[split:]
+
+    model = RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42, n_jobs=-1)
+    model.fit(X_train, y_train)
+
+    y_pred = model.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+
+    # Probabilidades para todas as dezenas (usando features atuais)
+    probs = model.predict_proba(features)[:, 1]
+
+    feature_names = ["freq", "atraso", "pair_score", "linha", "coluna", "is_primo", "is_impar"]
+
+    return {
+        "model": model,
+        "probs": probs,
+        "accuracy": float(accuracy),
+        "features": features,
+        "feature_names": feature_names,
+        "feature_importances": model.feature_importances_,
+    }
+
+
+def generate_bets_ml(lottery_name, draws_matrix, n_bets, model_data):
+    """
+    Gera apostas via roleta ponderada usando as probabilidades do modelo ML.
+    """
+    cfg = LOTTERIES[lottery_name]
+    total = cfg["dezenas_total"]
+    pick = cfg["dezenas_aposta"]
+
+    if model_data is None or model_data.get("probs") is None:
+        return []
+
+    probs = model_data["probs"]
+    nums = list(range(1, total + 1))
+    weights = [max(probs[n - 1], 0.001) for n in nums]
+
+    rng = random.Random(42)
+    bets = []
+
+    for _ in range(n_bets):
+        chosen = set()
+        temp_weights = list(weights)
+        temp_nums = list(nums)
+        while len(chosen) < pick:
+            selected = rng.choices(temp_nums, weights=temp_weights, k=1)[0]
+            chosen.add(selected)
+            idx = temp_nums.index(selected)
+            temp_nums.pop(idx)
+            temp_weights.pop(idx)
+        bets.append(sorted(chosen))
+
+    return bets
+
+
+def render_caixa_export(bets, lottery_name):
+    """
+    Renderiza a seção de exportação no formato da Caixa:
+    - Download JSON
+    - Snippet JS para integração
+    - Tabela do carrinho de apostas
+    """
+    cfg = LOTTERIES[lottery_name]
+    slug = cfg.get("slug", lottery_name.lower().replace(" ", "_").replace("+", "mais"))
+    pick = cfg["dezenas_aposta"]
+
+    st.markdown("### 🛒 Exportação no formato Caixa")
+
+    # Estrutura JSON
+    payload = {
+        "loteria": slug,
+        "loteria_nome": lottery_name,
+        "dezenas_aposta": pick,
+        "total_apostas": len(bets),
+        "apostas": [
+            {"id": i + 1, "dezenas": bet}
+            for i, bet in enumerate(bets)
+        ],
+        "gerado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+    json_str = json.dumps(payload, ensure_ascii=False, indent=2)
+
+    col_exp1, col_exp2 = st.columns(2)
+    with col_exp1:
+        st.download_button(
+            label="📥 Baixar JSON (formato Caixa)",
+            data=json_str.encode("utf-8"),
+            file_name=f"apostas_caixa_{slug}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            mime="application/json",
+        )
+    with col_exp2:
+        st.caption(f"{len(bets)} apostas · {pick} dezenas cada · slug: `{slug}`")
+
+    # Snippet JS
+    st.markdown("#### Snippet JavaScript (integração)")
+    js_snippet = f"""// Integração - Loteria: {lottery_name} (slug: {slug})
+const apostas = {json_str};
+
+// Exemplo: enviar apostas para API de carrinho
+async function enviarCarrinho() {{
+  const response = await fetch('/api/carrinho/{slug}', {{
+    method: 'POST',
+    headers: {{ 'Content-Type': 'application/json' }},
+    body: JSON.stringify(apostas)
+  }});
+  return await response.json();
+}}
+
+// Exemplo: renderizar apostas no DOM
+apostas.apostas.forEach(a => {{
+  console.log(`Aposta #${{a.id}}: ${{a.dezenas.join(', ')}}`);
+}});
+"""
+    st.code(js_snippet, language="javascript")
+
+    # Tabela do carrinho
+    st.markdown("#### Carrinho de Apostas")
+    df_cart = pd.DataFrame(bets, columns=[f"d{i+1}" for i in range(len(bets[0]) if bets else pick)])
+    df_cart.insert(0, "#", range(1, len(bets) + 1))
+    df_cart["Dezenas"] = df_cart.apply(lambda r: " - ".join(str(int(r[f"d{i+1}"])) for i in range(pick)), axis=1)
+    df_cart_display = df_cart[["#", "Dezenas"]].copy()
+    st.dataframe(df_cart_display, use_container_width=True, hide_index=True)
 
 # ============================================================
 # GERADOR DE APOSTAS
@@ -857,6 +1070,47 @@ def plot_spatial_linhas(spatial, theme):
     )
     return fig
 
+
+def plot_ml_probabilities(probs, total, theme):
+    """Gráfico de barras das probabilidades ML por dezena."""
+    nums = list(range(1, total + 1))
+    fig = go.Figure(data=[go.Bar(
+        x=nums, y=probs,
+        marker_color=theme["accent"],
+        text=[f"{p:.3f}" for p in probs],
+        textposition="outside",
+        textfont=dict(size=8),
+    )])
+    fig.update_layout(
+        title="Probabilidades por Dezena (Random Forest)",
+        xaxis_title="Dezena", yaxis_title="Probabilidade",
+        template="plotly_white", height=450,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
+
+def plot_feature_importances(importances, feature_names, theme):
+    """Gráfico de barras horizontais das importâncias das features."""
+    sorted_idx = np.argsort(importances)
+    fig = go.Figure(data=[go.Bar(
+        x=importances[sorted_idx],
+        y=[feature_names[i] for i in sorted_idx],
+        orientation="h",
+        marker_color=theme["accent"],
+        text=[f"{v:.4f}" for v in importances[sorted_idx]],
+        textposition="auto",
+    )])
+    fig.update_layout(
+        title="Importância das Features (Random Forest)",
+        xaxis_title="Importância", yaxis_title="Feature",
+        template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
 # ============================================================
 # APP PRINCIPAL
 # ============================================================
@@ -867,7 +1121,7 @@ def main():
     theme = get_theme()
 
     st.title("🎲 Motor Analítico & Gerador de Apostas Multi-Loteria")
-    st.markdown("<span class='section-title'>Análise estatística avançada · Monte Carlo · Backtesting · Exportação Excel</span>", unsafe_allow_html=True)
+    st.markdown("<span class='section-title'>Análise estatística avançada · Monte Carlo · Backtesting · ML Preditivo · Exportação Excel</span>", unsafe_allow_html=True)
 
     # ---------- SIDEBAR ----------
     with st.sidebar:
@@ -904,10 +1158,17 @@ def main():
         st.divider()
         st.subheader("🎲 Gerador de Apostas")
         n_bets = st.slider("Número de apostas", 1, 50, 10)
-        strategy = st.selectbox("Estratégia", ["híbrido", "frequentes", "atrasadas", "aleatória"], index=0)
+
+        strategy_options = ["híbrido", "frequentes", "atrasadas", "aleatória"]
+        if SKLEARN_AVAILABLE:
+            strategy_options.append("ML Preditivo (Random Forest)")
+        strategy = st.selectbox("Estratégia", strategy_options, index=0)
         w_freq = st.slider("Peso Frequência", 0.0, 1.0, 0.4, 0.05)
         w_delay = st.slider("Peso Atraso", 0.0, 1.0, 0.3, 0.05)
         w_pairs = st.slider("Peso Pares Fortes", 0.0, 1.0, 0.3, 0.05)
+
+        if not SKLEARN_AVAILABLE:
+            st.caption("⚠️ scikit-learn não instalado. ML Preditivo indisponível. Instale com `pip install scikit-learn`.")
 
     # ---------- CARREGAR DADOS ----------
     df_data = None
@@ -956,17 +1217,73 @@ def main():
         st.header("🎰 Gerador de Apostas Otimizado")
         st.markdown("Combina **frequência**, **atraso** e **pares fortes (Monte Carlo)** com otimização via `itertools`.")
 
+        is_ml_strategy = (strategy == "ML Preditivo (Random Forest)")
+
+        if is_ml_strategy:
+            st.info("🤖 Estratégia **ML Preditivo (Random Forest)** selecionada. O modelo será treinado com o histórico disponível.")
+
         if st.button("⚡ Gerar Apostas", type="primary"):
             with st.spinner("Gerando apostas otimizadas..."):
-                bets, freq, delays, real_pairs = generate_bets(
-                    lottery_name, draws_matrix, n_bets=n_bets,
-                    strategy=strategy, weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs
-                )
-                strong_pairs = find_strong_pairs(real_pairs, top_n=20)
-                st.session_state["bets"] = bets
-                st.session_state["freq"] = freq
-                st.session_state["delays"] = delays
-                st.session_state["strong_pairs"] = strong_pairs
+                if is_ml_strategy:
+                    if not SKLEARN_AVAILABLE:
+                        st.error("scikit-learn não está disponível. Não é possível usar ML Preditivo.")
+                    else:
+                        with st.spinner("Treinando modelo Random Forest..."):
+                            model_data = train_predictive_model(draws_matrix, lottery_name)
+                            st.session_state["ml_model_data"] = model_data
+
+                        if model_data is not None:
+                            bets = generate_bets_ml(lottery_name, draws_matrix, n_bets, model_data)
+                            freq = compute_frequency(draws_matrix, cfg["dezenas_total"])
+                            delays = compute_delays(draws_matrix, cfg["dezenas_total"])
+                            _, real_pairs = monte_carlo_pairs(draws_matrix, cfg["dezenas_total"], iterations=3000)
+                            strong_pairs = find_strong_pairs(real_pairs, top_n=20)
+                            st.session_state["bets"] = bets
+                            st.session_state["freq"] = freq
+                            st.session_state["delays"] = delays
+                            st.session_state["strong_pairs"] = strong_pairs
+                        else:
+                            st.error("Não foi possível treinar o modelo. Verifique se há dados suficientes.")
+                else:
+                    bets, freq, delays, real_pairs = generate_bets(
+                        lottery_name, draws_matrix, n_bets=n_bets,
+                        strategy=strategy, weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs
+                    )
+                    strong_pairs = find_strong_pairs(real_pairs, top_n=20)
+                    st.session_state["bets"] = bets
+                    st.session_state["freq"] = freq
+                    st.session_state["delays"] = delays
+                    st.session_state["strong_pairs"] = strong_pairs
+
+        # ---------- EXIBIÇÃO ML: ACCURACY + FEATURE IMPORTANCES + PROBS ----------
+        if is_ml_strategy and "ml_model_data" in st.session_state and st.session_state["ml_model_data"] is not None:
+            model_data = st.session_state["ml_model_data"]
+            st.markdown("---")
+            st.subheader("🤖 Resultados do Modelo ML")
+
+            col_ml1, col_ml2 = st.columns(2)
+            with col_ml1:
+                metric_card("Acurácia do Modelo", f"{model_data['accuracy']:.2%}", "Random Forest")
+            with col_ml2:
+                metric_card("Features Utilizadas", len(model_data["feature_names"]), "7 atributos por dezena")
+
+            # Feature importances
+            st.markdown("#### Importância das Features")
+            st.plotly_chart(
+                plot_feature_importances(
+                    model_data["feature_importances"],
+                    model_data["feature_names"],
+                    theme
+                ),
+                use_container_width=True
+            )
+
+            # Gráfico de probabilidades
+            st.markdown("#### Probabilidades por Dezena")
+            st.plotly_chart(
+                plot_ml_probabilities(model_data["probs"], cfg["dezenas_total"], theme),
+                use_container_width=True
+            )
 
         if "bets" in st.session_state and st.session_state["bets"]:
             bets = st.session_state["bets"]
@@ -1011,6 +1328,10 @@ def main():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
             st.caption("O arquivo Excel contém 4 abas: **Apostas**, **Frequência**, **Atrasos** e **Pares Fortes**.")
+
+            # ---------- EXPORTAÇÃO CAIXA (FASE 3) ----------
+            st.markdown("---")
+            render_caixa_export(bets, lottery_name)
         else:
             st.info("Clique em **⚡ Gerar Apostas** para criar combinações otimizadas.")
 
@@ -1399,6 +1720,10 @@ def main():
                     )
                 else:
                     st.info("As análises estatísticas não estão disponíveis. Gere as apostas primeiro.")
+
+                # ---------- EXPORTAÇÃO CAIXA (FASE 3) ----------
+                st.markdown("---")
+                render_caixa_export(bets, lottery_name)
             else:
                 st.info("As apostas atuais foram geradas pelo Gerador de Apostas (tamanho diferente). Para usar o fechamento, gere novamente nesta aba.")
 
@@ -1415,7 +1740,7 @@ def main():
     st.divider()
     st.markdown(
         f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>"
-        f"Motor Analítico de Loterias · Streamlit + Plotly + xlsxwriter · "
+        f"Motor Analítico de Loterias · Streamlit + Plotly + xlsxwriter + scikit-learn · "
         f"{datetime.now().year} · Jogue com responsabilidade.</div>",
         unsafe_allow_html=True
     )
