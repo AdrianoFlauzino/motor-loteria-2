@@ -1023,7 +1023,12 @@ def plot_prime_impar_summary(patterns, theme):
 def plot_backtest_results(results, theme):
     labels = [k for k, v in results.items() if v > 0 or k != "Nenhum"]
     values = [results[k] for k in labels]
-    fig = go.Figure(data=[go.Bar(x=labels, y=values, marker_color=theme["accent"], text=values, textposition="auto")])
+    # Criar pares (label, value) e ordenar por value crescente (do menor para o maior)
+    pares = list(zip(labels, values))
+    pares.sort(key=lambda x: x[1])
+    labels_sorted = [p[0] for p in pares]
+    values_sorted = [p[1] for p in pares]
+    fig = go.Figure(data=[go.Bar(x=labels_sorted, y=values_sorted, marker_color=theme["accent"], text=values_sorted, textposition="auto")])
     fig.update_layout(
         title="Resultado do Backtesting",
         xaxis_title="Categoria de Prêmio", yaxis_title="Ocorrências",
@@ -1455,20 +1460,24 @@ def main():
 
                 st.divider()
 
-                st.subheader("Resumo de Prêmios")
                 df_res = pd.DataFrame([{"Prêmio": k, "Ocorrências": v} for k, v in results.items() if v > 0])
+                df_res = df_res.sort_values("Ocorrências", ascending=False).reset_index(drop=True)
+
                 if not df_detail.empty:
                     # Formatar coluna Valor Estimado para exibição
                     df_detail_display = df_detail.copy()
                     df_detail_display["Valor Estimado"] = df_detail_display["Valor Estimado"].apply(format_brl)
+                    df_detail_display = df_detail_display.sort_values("Acertos", ascending=False).reset_index(drop=True)
 
                     col_b1, col_b2 = st.columns([1, 2])
                     with col_b1:
+                        st.subheader("Resumo de Prêmios")
                         st.dataframe(df_res, use_container_width=True, hide_index=True)
                     with col_b2:
-                        st.markdown("### Detalhamento de Acertos")
+                        st.subheader("Detalhamento de Acertos")
                         st.dataframe(df_detail_display.head(50), use_container_width=True, hide_index=True)
                 else:
+                    st.subheader("Resumo de Prêmios")
                     st.dataframe(df_res, use_container_width=True, hide_index=True)
                     st.info("Nenhum prêmio encontrado no histórico com as apostas atuais. Tente gerar mais apostas ou outra estratégia.")
 
