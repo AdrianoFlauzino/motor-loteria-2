@@ -611,7 +611,7 @@ def generate_bets_ml(lottery_name, draws_matrix, n_bets, model_data):
     return bets
 
 
-def render_caixa_export(bets, lottery_name):
+def render_caixa_export(bets, lottery_name, download_key="download_json_caixa_default"):
     """
     Renderiza a seção de exportação no formato da Caixa:
     - Download JSON
@@ -646,6 +646,7 @@ def render_caixa_export(bets, lottery_name):
             data=json_str.encode("utf-8"),
             file_name=f"apostas_caixa_{slug}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
             mime="application/json",
+            key=download_key,
         )
     with col_exp2:
         st.caption(f"{len(bets)} apostas · {pick} dezenas cada · slug: `{slug}`")
@@ -1126,24 +1127,24 @@ def main():
     # ---------- SIDEBAR ----------
     with st.sidebar:
         st.header("⚙️ Configurações")
-        st.session_state["theme"] = st.radio("Tema", ["Branco", "Azul"], index=0 if st.session_state.get("theme", "Branco") == "Branco" else 1)
+        st.session_state["theme"] = st.radio("Tema", ["Branco", "Azul"], index=0 if st.session_state.get("theme", "Branco") == "Branco" else 1, key="theme_radio")
         theme = get_theme()
         apply_theme_css()
 
         st.divider()
-        lottery_name = st.selectbox("🎯 Loteria", list(LOTTERIES.keys()), index=0)
+        lottery_name = st.selectbox("🎯 Loteria", list(LOTTERIES.keys()), index=0, key="lottery_select")
         cfg = LOTTERIES[lottery_name]
 
         st.divider()
         st.subheader("📁 Ingestão de Dados")
-        uploaded_file = st.file_uploader("Subir CSV ou Excel", type=["csv", "xlsx", "xls"])
+        uploaded_file = st.file_uploader("Subir CSV ou Excel", type=["csv", "xlsx", "xls"], key="file_uploader")
         st.caption("Colunas de dezenas devem começar com 'd' ou 'bola'. Caso contrário, serão inferidas.")
 
-        use_mock = st.checkbox("Usar dados mockados como fallback", value=True)
+        use_mock = st.checkbox("Usar dados mockados como fallback", value=True, key="use_mock_checkbox")
 
         st.divider()
         st.subheader("🌐 Atualização Online")
-        if st.button("Buscar últimos resultados online"):
+        if st.button("Buscar últimos resultados online", key="fetch_online_button"):
             with st.spinner("Buscando dados da API pública..."):
                 online_df = fetch_latest_results(lottery_name)
                 if online_df is not None:
@@ -1157,15 +1158,15 @@ def main():
 
         st.divider()
         st.subheader("🎲 Gerador de Apostas")
-        n_bets = st.slider("Número de apostas", 1, 50, 10)
+        n_bets = st.slider("Número de apostas", 1, 50, 10, key="n_bets_slider")
 
         strategy_options = ["híbrido", "frequentes", "atrasadas", "aleatória"]
         if SKLEARN_AVAILABLE:
             strategy_options.append("ML Preditivo (Random Forest)")
-        strategy = st.selectbox("Estratégia", strategy_options, index=0)
-        w_freq = st.slider("Peso Frequência", 0.0, 1.0, 0.4, 0.05)
-        w_delay = st.slider("Peso Atraso", 0.0, 1.0, 0.3, 0.05)
-        w_pairs = st.slider("Peso Pares Fortes", 0.0, 1.0, 0.3, 0.05)
+        strategy = st.selectbox("Estratégia", strategy_options, index=0, key="strategy_select")
+        w_freq = st.slider("Peso Frequência", 0.0, 1.0, 0.4, 0.05, key="weight_freq_slider")
+        w_delay = st.slider("Peso Atraso", 0.0, 1.0, 0.3, 0.05, key="weight_delay_slider")
+        w_pairs = st.slider("Peso Pares Fortes", 0.0, 1.0, 0.3, 0.05, key="weight_pairs_slider")
 
         if not SKLEARN_AVAILABLE:
             st.caption("⚠️ scikit-learn não instalado. ML Preditivo indisponível. Instale com `pip install scikit-learn`.")
@@ -1222,7 +1223,7 @@ def main():
         if is_ml_strategy:
             st.info("🤖 Estratégia **ML Preditivo (Random Forest)** selecionada. O modelo será treinado com o histórico disponível.")
 
-        if st.button("⚡ Gerar Apostas", type="primary"):
+        if st.button("⚡ Gerar Apostas", type="primary", key="gerar_apostas_button"):
             with st.spinner("Gerando apostas otimizadas..."):
                 if is_ml_strategy:
                     if not SKLEARN_AVAILABLE:
@@ -1326,12 +1327,13 @@ def main():
                 data=excel_data,
                 file_name=f"apostas_{lottery_name.replace(' ', '_').replace('+', 'mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_excel_apostas",
             )
             st.caption("O arquivo Excel contém 4 abas: **Apostas**, **Frequência**, **Atrasos** e **Pares Fortes**.")
 
             # ---------- EXPORTAÇÃO CAIXA (FASE 3) ----------
             st.markdown("---")
-            render_caixa_export(bets, lottery_name)
+            render_caixa_export(bets, lottery_name, download_key="download_json_caixa_gerador")
         else:
             st.info("Clique em **⚡ Gerar Apostas** para criar combinações otimizadas.")
 
@@ -1406,7 +1408,7 @@ def main():
             bets = st.session_state["bets"]
             st.info(f"{len(bets)} apostas carregadas para backtesting contra {n_draws} sorteios.")
 
-            if st.button("🧪 Testar no Histórico", type="primary"):
+            if st.button("🧪 Testar no Histórico", type="primary", key="testar_historico_button"):
                 with st.spinner("Executando backtesting..."):
                     results, df_detail, financeiro = run_backtest(bets, draws_matrix, lottery_name)
                     st.session_state["backtest_results"] = results
@@ -1486,6 +1488,7 @@ def main():
             options=["Fechamento Total", "Fechamento Reduzido (Garantia)"],
             index=0,
             horizontal=True,
+            key="tipo_fechamento_radio",
         )
 
         # ---------- PARÂMETROS DO FECHAMENTO REDUZIDO ----------
@@ -1501,7 +1504,8 @@ def main():
                 options=range(len(garantia_labels)),
                 format_func=lambda i: garantia_labels[i],
                 index=len(garantia_labels) - 1 if len(garantia_labels) > 0 else 0,
-                help="Define o nível de garantia do fechamento reduzido. Ex: 'Garantir 4 se acertar 5' significa que se 5 das dezenas escolhidas forem sorteadas, pelo menos um bilhete terá 4 acertos."
+                help="Define o nível de garantia do fechamento reduzido. Ex: 'Garantir 4 se acertar 5' significa que se 5 das dezenas escolhidas forem sorteadas, pelo menos um bilhete terá 4 acertos.",
+                key="garantia_select",
             )
             garantir_acertos = garantia_options[selected_garantia_idx][0]
             se_acertar = garantia_options[selected_garantia_idx][1]
@@ -1513,7 +1517,8 @@ def main():
                 max_value=100000,
                 value=0,
                 step=10,
-                help="Define o número máximo de bilhetes a serem gerados. 0 significa sem limite (gera até cobrir todas as garantias)."
+                help="Define o número máximo de bilhetes a serem gerados. 0 significa sem limite (gera até cobrir todas as garantias).",
+                key="limite_jogos_number",
             )
 
         # ---------- ENTRADA DO USUÁRIO: ESCOLHER DEZENAS ----------
@@ -1525,7 +1530,8 @@ def main():
             "Digite as dezenas separadas por vírgula ou espaço:",
             value=",".join(map(str, default_numbers)),
             height=80,
-            help="Ex: 1,2,3,4,5,6,7"
+            help="Ex: 1,2,3,4,5,6,7",
+            key="dezenas_textarea",
         )
         # Processar entrada
         import re
@@ -1554,7 +1560,7 @@ def main():
             # ---------- FILTROS AVANÇADOS ----------
             st.markdown("---")
             st.subheader("⚙️ Filtros Avançados")
-            ativar_filtros = st.checkbox("Ativar filtros para reduzir o número de apostas", value=False)
+            ativar_filtros = st.checkbox("Ativar filtros para reduzir o número de apostas", value=False, key="ativar_filtros_checkbox")
 
             filtros_params = None
             if ativar_filtros:
@@ -1570,7 +1576,8 @@ def main():
                         min_value=0,
                         max_value=aposta_size,
                         value=aposta_size // 2,
-                        help=f"Quantidade exata de números ímpares na aposta (0 a {aposta_size})."
+                        help=f"Quantidade exata de números ímpares na aposta (0 a {aposta_size}).",
+                        key="qtd_impares_slider",
                     )
                 with col_f2:
                     soma_intervalo = st.slider(
@@ -1578,7 +1585,8 @@ def main():
                         min_value=int(soma_min),
                         max_value=int(soma_max),
                         value=(int(soma_min), int(soma_max)),
-                        help=f"Soma mínima: {soma_min} (menores) | Soma máxima: {soma_max} (maiores)."
+                        help=f"Soma mínima: {soma_min} (menores) | Soma máxima: {soma_max} (maiores).",
+                        key="soma_intervalo_slider",
                     )
                 with col_f3:
                     max_consec = st.slider(
@@ -1586,7 +1594,8 @@ def main():
                         min_value=1,
                         max_value=aposta_size,
                         value=aposta_size,
-                        help=f"Máximo de números consecutivos permitidos (1 a {aposta_size})."
+                        help=f"Máximo de números consecutivos permitidos (1 a {aposta_size}).",
+                        key="max_consec_slider",
                     )
 
                 filtros_params = {
@@ -1597,7 +1606,7 @@ def main():
                 }
 
             # ---------- BOTÃO GERAR FECHAMENTO ----------
-            if st.button("Gerar Fechamento", type="primary"):
+            if st.button("Gerar Fechamento", type="primary", key="gerar_fechamento_button"):
                 with st.spinner("Calculando combinações..."):
                     if tipo_fechamento == "Fechamento Reduzido (Garantia)":
                         # ---------- FECHAMENTO REDUZIDO ----------
@@ -1717,13 +1726,14 @@ def main():
                         data=excel_data,
                         file_name=f"fechamento_{lottery_name.replace(' ', '_').replace('+', 'mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_excel_fechamento",
                     )
                 else:
                     st.info("As análises estatísticas não estão disponíveis. Gere as apostas primeiro.")
 
                 # ---------- EXPORTAÇÃO CAIXA (FASE 3) ----------
                 st.markdown("---")
-                render_caixa_export(bets, lottery_name)
+                render_caixa_export(bets, lottery_name, download_key="download_json_caixa_fechamento")
             else:
                 st.info("As apostas atuais foram geradas pelo Gerador de Apostas (tamanho diferente). Para usar o fechamento, gere novamente nesta aba.")
 
@@ -1733,7 +1743,7 @@ def main():
         st.dataframe(df_data.head(100), use_container_width=True)
         st.caption(f"Total: {len(df_data)} sorteios | Loteria: {lottery_name}")
 
-        if st.checkbox("Mostrar estatísticas descritivas"):
+        if st.checkbox("Mostrar estatísticas descritivas", key="mostrar_estatisticas_check"):
             st.dataframe(df_data.describe(), use_container_width=True)
 
     # ---------- FOOTER ----------
