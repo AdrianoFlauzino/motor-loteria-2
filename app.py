@@ -83,6 +83,23 @@ def is_prime(n):
     return True
 
 
+def max_consecutivos(combo):
+    """Calcula a maior sequência de números consecutivos em uma combinação."""
+    if not combo:
+        return 0
+    ordenado = sorted(combo)
+    max_seq = 1
+    atual = 1
+    for i in range(1, len(ordenado)):
+        if ordenado[i] == ordenado[i - 1] + 1:
+            atual += 1
+            if atual > max_seq:
+                max_seq = atual
+        else:
+            atual = 1
+    return max_seq
+
+
 def get_theme():
     if "theme" not in st.session_state:
         st.session_state["theme"] = "Branco"
@@ -828,10 +845,71 @@ def main():
             total_combos = len(list(itertools.combinations(chosen_numbers, aposta_size)))
             st.info(f"Você selecionou **{len(chosen_numbers)}** dezenas. Serão geradas **{total_combos}** apostas (combinações de {aposta_size}).")
 
+            # ---------- FILTROS AVANÇADOS ----------
+            st.markdown("---")
+            st.subheader("⚙️ Filtros Avançados")
+            ativar_filtros = st.checkbox("Ativar filtros para reduzir o número de apostas", value=False)
+
+            filtros_params = None
+            if ativar_filtros:
+                # Calcular limites para o slider de soma
+                sorted_nums = sorted(chosen_numbers)
+                soma_min = sum(sorted_nums[:aposta_size])
+                soma_max = sum(sorted_nums[-aposta_size:])
+
+                col_f1, col_f2, col_f3 = st.columns(3)
+                with col_f1:
+                    qtd_impares = st.slider(
+                        "Quantidade de Ímpares",
+                        min_value=0,
+                        max_value=aposta_size,
+                        value=aposta_size // 2,
+                        help=f"Quantidade exata de números ímpares na aposta (0 a {aposta_size})."
+                    )
+                with col_f2:
+                    soma_intervalo = st.slider(
+                        "Intervalo da Soma",
+                        min_value=int(soma_min),
+                        max_value=int(soma_max),
+                        value=(int(soma_min), int(soma_max)),
+                        help=f"Soma mínima: {soma_min} (menores) | Soma máxima: {soma_max} (maiores)."
+                    )
+                with col_f3:
+                    max_consec = st.slider(
+                        "Máx. Números Consecutivos",
+                        min_value=1,
+                        max_value=aposta_size,
+                        value=aposta_size,
+                        help=f"Máximo de números consecutivos permitidos (1 a {aposta_size})."
+                    )
+
+                filtros_params = {
+                    "qtd_impares": qtd_impares,
+                    "soma_min": soma_intervalo[0],
+                    "soma_max": soma_intervalo[1],
+                    "max_consec": max_consec,
+                }
+
             if st.button("Gerar Fechamento", type="primary"):
                 with st.spinner("Calculando combinações..."):
-                    combinations = list(itertools.combinations(chosen_numbers, aposta_size))
-                    bets = [sorted(combo) for combo in combinations]
+                    total_original = 0
+                    bets = []
+                    for combo in itertools.combinations(chosen_numbers, aposta_size):
+                        total_original += 1
+                        if filtros_params is not None:
+                            # Filtro de ímpares
+                            qtd_imp = sum(1 for x in combo if x % 2 != 0)
+                            if qtd_imp != filtros_params["qtd_impares"]:
+                                continue
+                            # Filtro de soma
+                            soma_combo = sum(combo)
+                            if soma_combo < filtros_params["soma_min"] or soma_combo > filtros_params["soma_max"]:
+                                continue
+                            # Filtro de consecutivos
+                            if max_consecutivos(combo) > filtros_params["max_consec"]:
+                                continue
+                        bets.append(sorted(combo))
+
                     st.session_state["bets"] = bets
                     # As análises de freq/delays/real_pairs são do histórico, mas para exportação precisamos delas.
                     # Podemos recalcular ou usar as da última geração, mas não temos garantia. Vamos recalcular.
@@ -842,7 +920,21 @@ def main():
                     st.session_state["freq"] = freq_session
                     st.session_state["delays"] = delays_session
                     st.session_state["strong_pairs"] = strong_pairs_session
-                    st.success(f"{len(bets)} apostas geradas com sucesso!")
+
+                    if filtros_params is not None:
+                        total_filtrado = len(bets)
+                        reducao = total_original - total_filtrado
+                        pct_reducao = (reducao / total_original * 100) if total_original > 0 else 0
+                        st.success(f"{total_filtrado} apostas geradas com sucesso!")
+                        col_rf1, col_rf2, col_rf3 = st.columns(3)
+                        with col_rf1:
+                            metric_card("Combinações Originais", f"{total_original}", "Sem filtros")
+                        with col_rf2:
+                            metric_card("Após Filtragem", f"{total_filtrado}", "Com filtros aplicados")
+                        with col_rf3:
+                            metric_card("Redução", f"{reducao} ({pct_reducao:.1f}%)", "Combinações descartadas")
+                    else:
+                        st.success(f"{len(bets)} apostas geradas com sucesso!")
 
         # Exibição das apostas geradas por fechamento (se existirem)
         if "bets" in st.session_state and st.session_state["bets"]:
