@@ -101,6 +101,17 @@ THEME_COLORS = {
 }
 
 # ============================================================
+# DIMENSÕES DO VOLANTE (GEOMETRIA ESPACIAL)
+# ============================================================
+VOLANTE_DIMS = {
+    "Mega Sena": {"rows": 6, "cols": 10},       # 6x10 = 60
+    "Lotofácil": {"rows": 5, "cols": 5},         # 5x5 = 25
+    "Quina": {"rows": 8, "cols": 10},            # 8x10 = 80
+    "+Milionária": {"rows": 10, "cols": 5},      # 10x5 = 50
+    "Dia de Sorte": {"rows": 7, "cols": 5},      # 7x5 = 35 (31 usadas)
+}
+
+# ============================================================
 # UTILITÁRIOS
 # ============================================================
 
@@ -381,6 +392,81 @@ def compute_patterns(draws_matrix, total_numbers):
         "sum_std": float(np.std(sums)),
     }
 
+
+@st.cache_data(show_spinner=False)
+def compute_spatial_analysis(draws_matrix, lottery_name):
+    """
+    Calcula a análise espacial do volante para cada sorteio:
+    - Linhas preenchidas
+    - Colunas preenchidas
+    - Distribuição por quadrante (4 quadrantes)
+    - Borda vs Miolo
+    """
+    dims = VOLANTE_DIMS.get(lottery_name, {"rows": 10, "cols": 10})
+    rows = dims["rows"]
+    cols = dims["cols"]
+
+    linhas_preenchidas = []
+    colunas_preenchidas = []
+    quadrante_counts = {"Top-Left": [], "Top-Right": [], "Bottom-Left": [], "Bottom-Right": []}
+    borda_counts = []
+    miolo_counts = []
+
+    mid_row = rows // 2
+    mid_col = cols // 2
+
+    for draw in draws_matrix:
+        draw_nums = set(int(x) for x in draw)
+        linhas = set()
+        colunas = set()
+        quad = {"Top-Left": 0, "Top-Right": 0, "Bottom-Left": 0, "Bottom-Right": 0}
+        borda = 0
+        miolo = 0
+
+        for n in draw_nums:
+            r = (n - 1) // cols
+            c = (n - 1) % cols
+            linhas.add(r)
+            colunas.add(c)
+
+            if r < mid_row and c < mid_col:
+                quad["Top-Left"] += 1
+            elif r < mid_row and c >= mid_col:
+                quad["Top-Right"] += 1
+            elif r >= mid_row and c < mid_col:
+                quad["Bottom-Left"] += 1
+            else:
+                quad["Bottom-Right"] += 1
+
+            if r == 0 or r == rows - 1 or c == 0 or c == cols - 1:
+                borda += 1
+            else:
+                miolo += 1
+
+        linhas_preenchidas.append(len(linhas))
+        colunas_preenchidas.append(len(colunas))
+        for k in quadrante_counts:
+            quadrante_counts[k].append(quad[k])
+        borda_counts.append(borda)
+        miolo_counts.append(miolo)
+
+    total_dezenas_mean = float(np.mean(borda_counts) + np.mean(miolo_counts)) if len(draws_matrix) > 0 else 0.0
+
+    return {
+        "linhas_mean": float(np.mean(linhas_preenchidas)) if linhas_preenchidas else 0.0,
+        "linhas_dist": linhas_preenchidas,
+        "colunas_mean": float(np.mean(colunas_preenchidas)) if colunas_preenchidas else 0.0,
+        "colunas_dist": colunas_preenchidas,
+        "quadrante_means": {k: float(np.mean(v)) if v else 0.0 for k, v in quadrante_counts.items()},
+        "quadrante_dist": quadrante_counts,
+        "borda_mean": float(np.mean(borda_counts)) if borda_counts else 0.0,
+        "miolo_mean": float(np.mean(miolo_counts)) if miolo_counts else 0.0,
+        "borda_pct": (float(np.mean(borda_counts)) / total_dezenas_mean * 100.0) if total_dezenas_mean > 0 else 0.0,
+        "miolo_pct": (float(np.mean(miolo_counts)) / total_dezenas_mean * 100.0) if total_dezenas_mean > 0 else 0.0,
+        "rows": rows,
+        "cols": cols,
+    }
+
 # ============================================================
 # GERADOR DE APOSTAS
 # ============================================================
@@ -441,6 +527,83 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido", we
 
 def find_strong_pairs(real_pairs, top_n=20):
     return real_pairs.most_common(top_n)
+
+# ============================================================
+# FECHAMENTO REDUZIDO (MATRIZ DE GARANTIA)
+# ============================================================
+
+def get_garantia_options(lottery_name):
+    """
+    Gera opções dinâmicas de garantia baseadas no max_acertos da loteria.
+    Retorna uma lista de tuplas: (garantir_acertos, se_acertar, label)
+    """
+    cfg = LOTTERIES[lottery_name]
+    max_acertos = cfg["max_acertos"]
+    min_premio = min(cfg["premios"].keys())
+
+    options = []
+    # Garantir min_premio se acertar min_premio
+    options.append((min_premio, min_premio, f"Garantir {min_premio} se acertar {min_premio}"))
+    # Para cada nível de prêmio p de min_premio até max_acertos-1: garantir p se acertar p+1
+    for p in range(min_premio, max_acertos):
+        options.append((p, p + 1, f"Garantir {p} se acertar {p + 1}"))
+
+    return options
+
+
+def gerar_fechamento_reduzido(chosen_numbers, aposta_size, garantir_acertos, limite_jogos):
+    """
+    Implementa o algoritmo de fechamento reduzido por garantia (greedy set-cover).
+
+    - Gera todas as combinações de `aposta_size` dezenas das `chosen_numbers`.
+    - Gera todas as combinações de `garantir_acertos` dezenas das `chosen_numbers`.
+    - Usa greedy set-cover: itera sobre as combinações de tamanho `aposta_size`,
+      e para cada uma, marca quais combinações de tamanho `garantir_acertos`
+      ela "cobre" (subconjunto). Se uma combinação `aposta_size` cobre pelo
+      menos uma combinação `garantir_acertos` ainda não coberta, adiciona ela
+      ao resultado e marca as cobertas. Continua até todas as combinações de
+      `garantir_acertos` estarem cobertas ou o limite ser atingido.
+
+    Retorna: (lista de apostas, total de combinações de garantia)
+    """
+    chosen_numbers = sorted(chosen_numbers)
+
+    # Gera todas as combinações de aposta_size dezenas
+    todas_apostas = list(itertools.combinations(chosen_numbers, aposta_size))
+
+    # Gera todas as combinações de garantir_acertos dezenas
+    todas_garantias = list(itertools.combinations(chosen_numbers, garantir_acertos))
+    total_garantias = len(todas_garantias)
+
+    # Converte garantias para sets para verificação de subconjunto
+    garantias_sets = [set(g) for g in todas_garantias]
+    cobertas = [False] * total_garantias
+    num_cobertas = 0
+
+    resultado = []
+
+    for aposta in todas_apostas:
+        # Verifica limite de jogos
+        if limite_jogos > 0 and len(resultado) >= limite_jogos:
+            break
+        # Verifica se todas as garantias já foram cobertas
+        if num_cobertas >= total_garantias:
+            break
+
+        aposta_set = set(aposta)
+        novas_cobertas = []
+
+        for j, gset in enumerate(garantias_sets):
+            if not cobertas[j] and gset.issubset(aposta_set):
+                novas_cobertas.append(j)
+
+        if novas_cobertas:
+            resultado.append(sorted(aposta))
+            for j in novas_cobertas:
+                cobertas[j] = True
+            num_cobertas += len(novas_cobertas)
+
+    return resultado, total_garantias
 
 # ============================================================
 # BACKTESTING
@@ -656,6 +819,44 @@ def plot_backtest_results(results, theme):
     )
     return fig
 
+
+def plot_spatial_quadrants(spatial, theme):
+    """Pie chart da distribuição dos 4 quadrantes (média de dezenas por quadrante)."""
+    labels = list(spatial["quadrante_means"].keys())
+    values = list(spatial["quadrante_means"].values())
+    colors = [theme["accent"], "#FF6B6B", "#4ECDC4", "#FFD93D"]
+    fig = go.Figure(data=[go.Pie(
+        labels=labels, values=values, hole=0.4,
+        marker_colors=colors,
+        textinfo="label+percent",
+    )])
+    fig.update_layout(
+        title="Distribuição por Quadrante (média de dezenas por sorteio)",
+        template="plotly_white", height=420,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
+
+def plot_spatial_linhas(spatial, theme):
+    """Histograma da distribuição de linhas preenchidas por sorteio."""
+    fig = go.Figure(data=[go.Histogram(
+        x=spatial["linhas_dist"],
+        nbinsx=spatial["rows"],
+        marker_color=theme["accent"],
+        opacity=0.8,
+    )])
+    fig.update_layout(
+        title="Distribuição de Linhas Preenchidas por Sorteio",
+        xaxis_title="Número de Linhas Preenchidas",
+        yaxis_title="Frequência",
+        template="plotly_white", height=420,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
 # ============================================================
 # APP PRINCIPAL
 # ============================================================
@@ -832,6 +1033,47 @@ def main():
         st.plotly_chart(plot_sum_distribution(patterns, theme), use_container_width=True)
         st.plotly_chart(plot_patterns(patterns, theme), use_container_width=True)
 
+        # ---------- ANÁLISE ESPACIAL DO VOLANTE ----------
+        st.markdown("---")
+        st.markdown("### 📐 Análise Espacial do Volante")
+        st.markdown("Distribuição geométrica das dezenas sorteadas no volante: linhas, colunas, quadrantes e moldura (borda vs miolo).")
+
+        spatial = compute_spatial_analysis(draws_matrix, lottery_name)
+        volante_dims = VOLANTE_DIMS.get(lottery_name, {"rows": 10, "cols": 10})
+
+        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+        with col_s1:
+            metric_card(
+                "Média de Linhas Preenchidas",
+                f"{spatial['linhas_mean']:.2f}",
+                f"de {volante_dims['rows']} linhas"
+            )
+        with col_s2:
+            metric_card(
+                "Média de Colunas Preenchidas",
+                f"{spatial['colunas_mean']:.2f}",
+                f"de {volante_dims['cols']} colunas"
+            )
+        with col_s3:
+            quad_text = " · ".join([f"{k}: {v:.1f}" for k, v in spatial["quadrante_means"].items()])
+            metric_card(
+                "Distribuição por Quadrante",
+                f"{spatial['quadrante_means']['Top-Left']:.1f} / {spatial['quadrante_means']['Top-Right']:.1f} / {spatial['quadrante_means']['Bottom-Left']:.1f} / {spatial['quadrante_means']['Bottom-Right']:.1f}",
+                "TL / TR / BL / BR"
+            )
+        with col_s4:
+            metric_card(
+                "% Borda vs Miolo",
+                f"{spatial['borda_pct']:.1f}% / {spatial['miolo_pct']:.1f}%",
+                f"Borda: {spatial['borda_mean']:.1f} · Miolo: {spatial['miolo_mean']:.1f}"
+            )
+
+        col_sp1, col_sp2 = st.columns(2)
+        with col_sp1:
+            st.plotly_chart(plot_spatial_quadrants(spatial, theme), use_container_width=True)
+        with col_sp2:
+            st.plotly_chart(plot_spatial_linhas(spatial, theme), use_container_width=True)
+
     # ===== TAB: BACKTESTING =====
     with tab_backtest:
         st.header("🔬 Backtesting no Histórico")
@@ -910,12 +1152,51 @@ def main():
     # ===== TAB: FECHAMENTO MATEMÁTICO =====
     with tab_fechamento:
         st.header("🔢 Fechamento Matemático")
-        st.markdown("Selecione um conjunto maior de dezenas (ex: 10 a 15) e o sistema gerará **todas as combinações possíveis** (fechamento total) para o tamanho da aposta da loteria selecionada.")
+        st.markdown("Selecione um conjunto maior de dezenas (ex: 10 a 15) e o sistema gerará combinações para o tamanho da aposta da loteria selecionada.")
 
         total_dezenas = cfg["dezenas_total"]
         aposta_size = cfg["dezenas_aposta"]
 
-        # Entrada do usuário: escolher dezenas
+        # ---------- SELEÇÃO DO TIPO DE FECHAMENTO ----------
+        st.markdown("---")
+        st.subheader("📋 Tipo de Fechamento")
+        tipo_fechamento = st.radio(
+            "Escolha o tipo de fechamento:",
+            options=["Fechamento Total", "Fechamento Reduzido (Garantia)"],
+            index=0,
+            horizontal=True,
+        )
+
+        # ---------- PARÂMETROS DO FECHAMENTO REDUZIDO ----------
+        garantir_acertos = None
+        limite_jogos = 0
+        if tipo_fechamento == "Fechamento Reduzido (Garantia)":
+            st.markdown("---")
+            st.subheader("🎯 Configuração de Garantia")
+            garantia_options = get_garantia_options(lottery_name)
+            garantia_labels = [opt[2] for opt in garantia_options]
+            selected_garantia_idx = st.selectbox(
+                "Garantia",
+                options=range(len(garantia_labels)),
+                format_func=lambda i: garantia_labels[i],
+                index=len(garantia_labels) - 1 if len(garantia_labels) > 0 else 0,
+                help="Define o nível de garantia do fechamento reduzido. Ex: 'Garantir 4 se acertar 5' significa que se 5 das dezenas escolhidas forem sorteadas, pelo menos um bilhete terá 4 acertos."
+            )
+            garantir_acertos = garantia_options[selected_garantia_idx][0]
+            se_acertar = garantia_options[selected_garantia_idx][1]
+            st.info(f"Garantia selecionada: **{garantia_labels[selected_garantia_idx]}** (garantir_acertos = {garantir_acertos})")
+
+            limite_jogos = st.number_input(
+                "Quantidade de jogos limite (0 = sem limite)",
+                min_value=0,
+                max_value=100000,
+                value=0,
+                step=10,
+                help="Define o número máximo de bilhetes a serem gerados. 0 significa sem limite (gera até cobrir todas as garantias)."
+            )
+
+        # ---------- ENTRADA DO USUÁRIO: ESCOLHER DEZENAS ----------
+        st.markdown("---")
         st.markdown(f"Escolha de **{aposta_size + 1}** a **{min(15, total_dezenas)}** dezenas entre 1 e {total_dezenas}.")
         # Usamos um text_area para entrada manual
         default_numbers = list(range(1, aposta_size + 2))  # exemplo inicial
@@ -947,7 +1228,7 @@ def main():
         if valid:
             # Calcular número total de combinações
             total_combos = len(list(itertools.combinations(chosen_numbers, aposta_size)))
-            st.info(f"Você selecionou **{len(chosen_numbers)}** dezenas. Serão geradas **{total_combos}** apostas (combinações de {aposta_size}).")
+            st.info(f"Você selecionou **{len(chosen_numbers)}** dezenas. Fechamento total geraria **{total_combos}** apostas (combinações de {aposta_size}).")
 
             # ---------- FILTROS AVANÇADOS ----------
             st.markdown("---")
@@ -994,51 +1275,99 @@ def main():
                     "max_consec": max_consec,
                 }
 
+            # ---------- BOTÃO GERAR FECHAMENTO ----------
             if st.button("Gerar Fechamento", type="primary"):
                 with st.spinner("Calculando combinações..."):
-                    total_original = 0
-                    bets = []
-                    for combo in itertools.combinations(chosen_numbers, aposta_size):
-                        total_original += 1
-                        if filtros_params is not None:
-                            # Filtro de ímpares
-                            qtd_imp = sum(1 for x in combo if x % 2 != 0)
-                            if qtd_imp != filtros_params["qtd_impares"]:
-                                continue
-                            # Filtro de soma
-                            soma_combo = sum(combo)
-                            if soma_combo < filtros_params["soma_min"] or soma_combo > filtros_params["soma_max"]:
-                                continue
-                            # Filtro de consecutivos
-                            if max_consecutivos(combo) > filtros_params["max_consec"]:
-                                continue
-                        bets.append(sorted(combo))
+                    if tipo_fechamento == "Fechamento Reduzido (Garantia)":
+                        # ---------- FECHAMENTO REDUZIDO ----------
+                        with st.spinner(f"Gerando fechamento reduzido (garantir {garantir_acertos})..."):
+                            bets, total_garantias = gerar_fechamento_reduzido(
+                                chosen_numbers, aposta_size, garantir_acertos, limite_jogos
+                            )
 
-                    st.session_state["bets"] = bets
-                    # As análises de freq/delays/real_pairs são do histórico, mas para exportação precisamos delas.
-                    # Podemos recalcular ou usar as da última geração, mas não temos garantia. Vamos recalcular.
-                    freq_session = compute_frequency(draws_matrix, total_dezenas)
-                    delays_session = compute_delays(draws_matrix, total_dezenas)
-                    _, real_pairs_session = monte_carlo_pairs(draws_matrix, total_dezenas, iterations=3000)
-                    strong_pairs_session = find_strong_pairs(real_pairs_session, top_n=20)
-                    st.session_state["freq"] = freq_session
-                    st.session_state["delays"] = delays_session
-                    st.session_state["strong_pairs"] = strong_pairs_session
+                            # Aplicar filtros se ativados
+                            if filtros_params is not None and bets:
+                                bets_filtradas = []
+                                for combo in bets:
+                                    qtd_imp = sum(1 for x in combo if x % 2 != 0)
+                                    if qtd_imp != filtros_params["qtd_impares"]:
+                                        continue
+                                    soma_combo = sum(combo)
+                                    if soma_combo < filtros_params["soma_min"] or soma_combo > filtros_params["soma_max"]:
+                                        continue
+                                    if max_consecutivos(combo) > filtros_params["max_consec"]:
+                                        continue
+                                    bets_filtradas.append(combo)
+                                bets = bets_filtradas
 
-                    if filtros_params is not None:
-                        total_filtrado = len(bets)
-                        reducao = total_original - total_filtrado
-                        pct_reducao = (reducao / total_original * 100) if total_original > 0 else 0
-                        st.success(f"{total_filtrado} apostas geradas com sucesso!")
-                        col_rf1, col_rf2, col_rf3 = st.columns(3)
-                        with col_rf1:
-                            metric_card("Combinações Originais", f"{total_original}", "Sem filtros")
-                        with col_rf2:
-                            metric_card("Após Filtragem", f"{total_filtrado}", "Com filtros aplicados")
-                        with col_rf3:
-                            metric_card("Redução", f"{reducao} ({pct_reducao:.1f}%)", "Combinações descartadas")
+                            st.session_state["bets"] = bets
+
+                            # Recalcular análises estatísticas para exportação
+                            freq_session = compute_frequency(draws_matrix, total_dezenas)
+                            delays_session = compute_delays(draws_matrix, total_dezenas)
+                            _, real_pairs_session = monte_carlo_pairs(draws_matrix, total_dezenas, iterations=3000)
+                            strong_pairs_session = find_strong_pairs(real_pairs_session, top_n=20)
+                            st.session_state["freq"] = freq_session
+                            st.session_state["delays"] = delays_session
+                            st.session_state["strong_pairs"] = strong_pairs_session
+
+                            st.success(f"{len(bets)} apostas geradas com fechamento reduzido!")
+
+                            col_rf1, col_rf2, col_rf3 = st.columns(3)
+                            with col_rf1:
+                                metric_card("Apostas Geradas", f"{len(bets)}", f"de {total_combos} possíveis")
+                            with col_rf2:
+                                metric_card("Combinações de Garantia", f"{total_garantias}", f"garantir {garantir_acertos}")
+                            with col_rf3:
+                                reducao = total_combos - len(bets)
+                                pct_reducao = (reducao / total_combos * 100) if total_combos > 0 else 0
+                                metric_card("Redução", f"{reducao} ({pct_reducao:.1f}%)", "vs Fechamento Total")
+
                     else:
-                        st.success(f"{len(bets)} apostas geradas com sucesso!")
+                        # ---------- FECHAMENTO TOTAL (ATUAL) ----------
+                        total_original = 0
+                        bets = []
+                        for combo in itertools.combinations(chosen_numbers, aposta_size):
+                            total_original += 1
+                            if filtros_params is not None:
+                                # Filtro de ímpares
+                                qtd_imp = sum(1 for x in combo if x % 2 != 0)
+                                if qtd_imp != filtros_params["qtd_impares"]:
+                                    continue
+                                # Filtro de soma
+                                soma_combo = sum(combo)
+                                if soma_combo < filtros_params["soma_min"] or soma_combo > filtros_params["soma_max"]:
+                                    continue
+                                # Filtro de consecutivos
+                                if max_consecutivos(combo) > filtros_params["max_consec"]:
+                                    continue
+                            bets.append(sorted(combo))
+
+                        st.session_state["bets"] = bets
+                        # As análises de freq/delays/real_pairs são do histórico, mas para exportação precisamos delas.
+                        # Podemos recalcular ou usar as da última geração, mas não temos garantia. Vamos recalcular.
+                        freq_session = compute_frequency(draws_matrix, total_dezenas)
+                        delays_session = compute_delays(draws_matrix, total_dezenas)
+                        _, real_pairs_session = monte_carlo_pairs(draws_matrix, total_dezenas, iterations=3000)
+                        strong_pairs_session = find_strong_pairs(real_pairs_session, top_n=20)
+                        st.session_state["freq"] = freq_session
+                        st.session_state["delays"] = delays_session
+                        st.session_state["strong_pairs"] = strong_pairs_session
+
+                        if filtros_params is not None:
+                            total_filtrado = len(bets)
+                            reducao = total_original - total_filtrado
+                            pct_reducao = (reducao / total_original * 100) if total_original > 0 else 0
+                            st.success(f"{total_filtrado} apostas geradas com sucesso!")
+                            col_rf1, col_rf2, col_rf3 = st.columns(3)
+                            with col_rf1:
+                                metric_card("Combinações Originais", f"{total_original}", "Sem filtros")
+                            with col_rf2:
+                                metric_card("Após Filtragem", f"{total_filtrado}", "Com filtros aplicados")
+                            with col_rf3:
+                                metric_card("Redução", f"{reducao} ({pct_reducao:.1f}%)", "Combinações descartadas")
+                        else:
+                            st.success(f"{len(bets)} apostas geradas com sucesso!")
 
         # Exibição das apostas geradas por fechamento (se existirem)
         if "bets" in st.session_state and st.session_state["bets"]:
