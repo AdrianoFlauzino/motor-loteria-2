@@ -186,7 +186,7 @@ def get_theme():
 
 def apply_theme_css():
     theme = get_theme()
-    st.markdown(f"""
+    css = f"""
     <style>
     .stApp {{ background-color: {theme['bg']}; color: {theme['text']}; }}
     .stTabs [data-baseweb="tab"] {{ color: {theme['text']}; }}
@@ -220,11 +220,6 @@ def apply_theme_css():
         border: 1px solid {theme['accent']}22;
         box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         text-align: center;
-        transition: transform 0.15s;
-    }}
-    .metric-card:hover {{
-        transform: translateY(-2px);
-        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
     }}
     .metric-label {{
         font-size: 0.7rem;
@@ -248,8 +243,11 @@ def apply_theme_css():
     }}
     .section-title {{ color: {theme['accent']}; font-weight: 700; font-size: 1.3rem; }}
     </style>
-    """, unsafe_allow_html=True)
-
+    """
+    try:
+        st.html(css)
+    except AttributeError:
+        st.markdown(css, unsafe_allow_html=True)
 def metric_card(label, value, sub=""):
     st.markdown(f"""
     <div class="metric-card">
