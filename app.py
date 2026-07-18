@@ -161,7 +161,7 @@ def fetch_caixa_history(lottery_name, n_concursos=50):
             parsed = parse_caixa_json(data, lottery_name)
             if parsed:
                 rows.append(parsed)
-        time.sleep(0.3)
+        time.sleep(0.15)
     return pd.DataFrame(rows) if rows else None
 
 # 
@@ -187,23 +187,23 @@ def get_theme():
 def apply_theme_css():
     theme = get_theme()
     st.markdown(f"""
-    <style>
+    
     .stApp {{ background-color: {theme['bg']}; color: {theme['text']}; }}
     .stTabs [data-baseweb="tab"] {{ color: {theme['text']}; }}
     .stTabs [aria-selected="true"] {{ color: {theme['accent']}; border-bottom-color: {theme['accent']}; }}
     .metric-card {{ background-color: {theme['card']}; border-radius: 12px; padding: 18px; margin: 6px 0; border-left: 4px solid {theme['accent']}; }}
     .section-title {{ color: {theme['accent']}; font-weight: 700; font-size: 1.3rem; }}
-    </style>
+    
     """, unsafe_allow_html=True)
 
 def metric_card(label, value, sub=""):
     theme = get_theme()
     st.markdown(f"""
-    <div class="metric-card">
-        <div style="font-size:0.8rem;opacity:0.8;">{label}</div>
-        <div style="font-size:1.6rem;font-weight:700;color:{theme['accent']};">{value}</div>
-        <div style="font-size:0.75rem;opacity:0.6;">{sub}</div>
-    </div>
+    
+        {label}
+        {value}
+        {sub}
+    
     """, unsafe_allow_html=True)
 
 # 
@@ -339,7 +339,7 @@ def get_meses_series(df, lottery_name):
     return pd.to_numeric(df["mes"], errors="coerce").dropna()
 
 # 
-# ANÁLISES ESTATÍSTICAS
+# ANÁLISES ESTATÍSTICAS (OTIMIZADAS)
 # 
 @st.cache_data(show_spinner=False)
 def compute_frequency(draws_matrix, total_numbers):
@@ -350,23 +350,25 @@ def compute_frequency(draws_matrix, total_numbers):
 @st.cache_data(show_spinner=False)
 def compute_delays(draws_matrix, total_numbers):
     n_draws = len(draws_matrix)
+    draw_sets = [set(row.tolist()) for row in draws_matrix]
     delays = {}
     for num in range(1, total_numbers + 1):
         last_seen = None
         for i in range(n_draws - 1, -1, -1):
-            if num in draws_matrix[i]:
+            if num in draw_sets[i]:
                 last_seen = i
                 break
         delays[num] = n_draws if last_seen is None else (n_draws - 1) - last_seen
     return delays
 
 @st.cache_data(show_spinner=False)
-def monte_carlo_pairs(draws_matrix, total_numbers, iterations=5000):
+def monte_carlo_pairs(draws_matrix, total_numbers, iterations=1500):
     rng = np.random.default_rng(42)
+    samples = rng.choice(total_numbers, size=(iterations, 2), replace=False)
     pair_counts = Counter()
-    for _ in range(iterations):
-        sample = rng.choice(total_numbers, size=2, replace=False)
-        pair_counts[tuple(sorted(sample.tolist()))] += 1
+    for s in samples:
+        pair = tuple(sorted(s.tolist()))
+        pair_counts[pair] += 1
     real_pairs = Counter()
     for row in draws_matrix:
         for combo in itertools.combinations(sorted(row.tolist()), 2):
@@ -375,12 +377,12 @@ def monte_carlo_pairs(draws_matrix, total_numbers, iterations=5000):
 
 @st.cache_data(show_spinner=False)
 def compute_patterns(draws_matrix, total_numbers):
-    impar_ratios, prime_counts, sums = [], [], []
-    for row in draws_matrix:
-        nums = row.tolist()
-        impar_ratios.append(sum(1 for x in nums if x % 2 != 0) / len(nums))
-        prime_counts.append(sum(1 for x in nums if is_prime(int(x))))
-        sums.append(sum(nums))
+    arr = np.array(draws_matrix)
+    impares = (arr % 2 != 0).sum(axis=1)
+    impar_ratios = (impares / arr.shape[1]).tolist()
+    sums = arr.sum(axis=1).tolist()
+    prime_set = {x for x in range(2, total_numbers + 1) if all(x % i != 0 for i in range(2, int(np.sqrt(x)) + 1))}
+    prime_counts = [sum(1 for x in row if int(x) in prime_set) for row in arr]
     return {
         "impar_ratio_mean": float(np.mean(impar_ratios)),
         "impar_ratios": impar_ratios,
@@ -404,11 +406,12 @@ def compute_trevos_delays(trevos_matrix, trevos_total):
     if trevos_matrix is None:
         return {}
     n_draws = len(trevos_matrix)
+    draw_sets = [set(row.tolist()) for row in trevos_matrix]
     delays = {}
     for num in range(1, trevos_total + 1):
         last_seen = None
         for i in range(n_draws - 1, -1, -1):
-            if num in trevos_matrix[i]:
+            if num in draw_sets[i]:
                 last_seen = i
                 break
         delays[num] = n_draws if last_seen is None else (n_draws - 1) - last_seen
@@ -422,11 +425,10 @@ def compute_meses_frequency(meses_series, meses_total):
     return {n: freq.get(n, 0) for n in range(1, meses_total + 1)}
 
 # 
-# NOVIDADE 1: ANÁLISE DE QUADRANTES
+# ANÁLISE DE QUADRANTES
 # 
 @st.cache_data(show_spinner=False)
 def compute_quadrants(total_numbers, n_quadrants=4):
-    """Divide o universo de dezenas em N quadrantes."""
     size = total_numbers // n_quadrants
     quadrants = {}
     for q in range(n_quadrants):
@@ -449,23 +451,18 @@ def count_quadrant_distribution(bet, quadrants):
     return dist
 
 # 
-# NOVIDADE 2: VALIDAÇÃO DE PADRÕES IMPROVÁVEIS
+# VALIDAÇÃO DE PADRÕES
 # 
 def is_bet_valid(bet, patterns, lottery_name, quadrants):
-    """Rejeita apostas com padrões estatisticamente improváveis."""
-    cfg = LOTTERIES[lottery_name]
     pick = len(bet)
-    # 1. Todos pares ou todos ímpares
     impares = sum(1 for x in bet if x % 2 != 0)
     if impares == 0 or impares == pick:
-        return False, "Todos pares ou todos ímpares"
-    # 2. Soma fora de 2 desvios-padrão
+        return False, "Todos pares ou ímpares"
     soma = sum(bet)
     mean = patterns["sum_mean"]
     std = patterns["sum_std"]
-    if std > 0 and abs(soma - mean) > 2 * std:
-        return False, "Soma fora de 2σ"
-    # 3. Mais de 3 consecutivos
+    if std > 0 and abs(soma - mean) > 2.5 * std:
+        return False, "Soma fora de 2.5σ"
     sorted_bet = sorted(bet)
     max_consec = 1
     current_consec = 1
@@ -477,63 +474,44 @@ def is_bet_valid(bet, patterns, lottery_name, quadrants):
             current_consec = 1
     if max_consec > 3:
         return False, "Mais de 3 consecutivos"
-    # 4. Distribuição em quadrantes — pelo menos 1 por quadrante, no máximo 3
     qdist = count_quadrant_distribution(bet, quadrants)
-    if any(v == 0 for v in qdist.values()):
-        return False, "Quadrante vazio"
-    if any(v > 3 for v in qdist.values()):
+    if any(v > 4 for v in qdist.values()):
         return False, "Quadrante sobrecarregado"
     return True, "Válido"
 
 # 
-# NOVIDADE 3: SCORE DE CONFIANÇA POR APOSTA
+# SCORE DE CONFIANÇA
 # 
-def compute_bet_score(bet, freq, delays, real_pairs, patterns, quadrants, total, max_freq, max_delay, max_pair_score):
-    """Calcula um score de 0 a 100 para a aposta."""
-    # 1. Alinhamento com frequência (30%)
+def compute_bet_score(bet, freq, delays, pair_score_map, patterns, quadrants, total, max_freq, max_delay, max_pair_score):
     freq_score = sum(freq.get(n, 0) for n in bet) / (max_freq * len(bet)) if max_freq > 0 else 0
-    # 2. Alinhamento com atraso (20%)
     delay_score = sum(delays.get(n, 0) for n in bet) / (max_delay * len(bet)) if max_delay > 0 else 0
-    # 3. Distribuição em quadrantes (20%)
     qdist = count_quadrant_distribution(bet, quadrants)
     n_quads = len(quadrants)
-    ideal_per_quad = len(bet) / n_quads
-    quad_penalty = sum(abs(v - ideal_per_quad) for v in qdist.values())
-    quad_score = max(0, 1 - quad_penalty / (len(bet)))
-    # 4. Soma dentro do intervalo ideal (15%)
+    ideal = len(bet) / n_quads
+    quad_penalty = sum(abs(v - ideal) for v in qdist.values())
+    quad_score = max(0, 1 - quad_penalty / len(bet))
     soma = sum(bet)
-    mean = patterns["sum_mean"]
     std = patterns["sum_std"]
     if std > 0:
-        z = abs(soma - mean) / std
+        z = abs(soma - patterns["sum_mean"]) / std
         sum_score = max(0, 1 - z / 3)
     else:
         sum_score = 0.5
-    # 5. Presença de pares fortes (15%)
-    pair_score_map = {}
-    for (a, b), cnt in real_pairs.items():
-        pair_score_map[a] = pair_score_map.get(a, 0) + cnt
-        pair_score_map[b] = pair_score_map.get(b, 0) + cnt
-    bet_pair_score = sum(pair_score_map.get(n, 0) for n in bet)
-    pair_score = bet_pair_score / (max_pair_score * len(bet)) if max_pair_score > 0 else 0
-    # Score final
+    pair_score = sum(pair_score_map.get(n, 0) for n in bet) / (max_pair_score * len(bet)) if max_pair_score > 0 else 0
     score = (0.30 * freq_score + 0.20 * delay_score + 0.20 * quad_score + 0.15 * sum_score + 0.15 * pair_score) * 100
     return min(100, max(0, round(score)))
 
 # 
-# NOVIDADE 4: CICLO DE COMPLETUDE DA MATRIZ
+# CICLO DE COMPLETUDE
 # 
 @st.cache_data(show_spinner=False)
 def compute_cycle_completion(draws_matrix, total_numbers):
-    """Calcula quantas dezenas únicas já foram sorteadas no ciclo atual."""
     seen = set()
     cycle_start = 0
-    # Percorre do mais recente para trás
     for i in range(len(draws_matrix) - 1, -1, -1):
         for n in draws_matrix[i]:
             seen.add(int(n))
         if len(seen) == total_numbers:
-            # Ciclo completo neste ponto — recomeça
             cycle_start = i
             seen = set()
             for n in draws_matrix[i]:
@@ -550,7 +528,7 @@ def compute_cycle_completion(draws_matrix, total_numbers):
     }
 
 # 
-# GERADOR DE APOSTAS COM 4 MELHORIAS
+# GERADOR DE APOSTAS (OTIMIZADO)
 # 
 def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
                   weight_freq=0.4, weight_delay=0.3, weight_pairs=0.3,
@@ -560,7 +538,7 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
     pick = cfg["dezenas_aposta"]
     freq = compute_frequency(draws_matrix, total)
     delays = compute_delays(draws_matrix, total)
-    mc_pairs, real_pairs = monte_carlo_pairs(draws_matrix, total, iterations=3000)
+    mc_pairs, real_pairs = monte_carlo_pairs(draws_matrix, total, iterations=1000)
     patterns = compute_patterns(draws_matrix, total)
     quadrants = compute_quadrants(total, 4)
     cycle = compute_cycle_completion(draws_matrix, total)
@@ -568,22 +546,19 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
     max_freq = max(freq.values()) if max(freq.values()) > 0 else 1
     max_delay = max(delays.values()) if max(delays.values()) > 0 else 1
 
-    # Pair score map
     pair_score_map = {num: 0.0 for num in range(1, total + 1)}
     for (a, b), cnt in real_pairs.items():
         pair_score_map[a] += cnt
         pair_score_map[b] += cnt
     max_pair = max(pair_score_map.values()) if max(pair_score_map.values()) > 0 else 1
 
-    # Scores base com peso de ciclo
     scores = {}
     for num in range(1, total + 1):
         f_score = freq.get(num, 0) / max_freq
         d_score = delays.get(num, 0) / max_delay
         scores[num] = weight_freq * f_score + weight_delay * d_score
-        # Bônus se a dezena está faltando no ciclo atual
         if num in cycle["missing"] and cycle["completion_pct"] > 70:
-            scores[num] *= 1.15  # Bônus de 15%
+            scores[num] *= 1.15
     for num in pair_score_map:
         scores[num] += weight_pairs * (pair_score_map[num] / max_pair)
 
@@ -593,10 +568,14 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
     bets = []
     scores_list = []
     rejection_reasons = []
-    max_generation_attempts = n_bets * 5  # Limite para evitar loop infinito
+    existing_bets = set()
+    max_attempts = n_bets * 3
+
+    nums_list = list(scores.keys())
+    weights_list = [scores[n] + 0.01 for n in nums_list]
 
     attempts = 0
-    while len(bets) < n_bets and attempts < max_generation_attempts:
+    while len(bets) < n_bets and attempts < max_attempts:
         attempts += 1
         if strategy == "frequentes":
             top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:pick * 3]
@@ -607,44 +586,41 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
         elif strategy == "aleatória":
             chosen = rng.sample(range(1, total + 1), pick)
         else:
-            nums = list(scores.keys())
-            weights = [scores[n] + 0.01 for n in nums]
             chosen = set()
             while len(chosen) < pick:
-                chosen.add(rng.choices(nums, weights=weights, k=1)[0])
+                chosen.add(rng.choices(nums_list, weights=weights_list, k=1)[0])
             chosen = list(chosen)
         chosen = sorted(chosen)
+        chosen_tuple = tuple(chosen)
 
-        # NOVIDADE 2: Validar padrões
         valid, reason = is_bet_valid(chosen, patterns, lottery_name, quadrants)
         if not valid:
             rejection_reasons.append(reason)
             continue
-
-        # Evitar duplicatas
-        if tuple(chosen) in {tuple(b) for b in bets}:
+        if chosen_tuple in existing_bets:
             continue
 
-        # NOVIDADE 3: Score de confiança
-        score = compute_bet_score(chosen, freq, delays, real_pairs, patterns, quadrants, total, max_freq, max_delay, max_pair)
-        # Descartar se score < 50
-        if score < 50:
+        score = compute_bet_score(chosen, freq, delays, pair_score_map, patterns, quadrants, total, max_freq, max_delay, max_pair)
+        if score < 35:
             rejection_reasons.append(f"Score baixo ({score})")
             continue
 
         bets.append(chosen)
         scores_list.append(score)
+        existing_bets.add(chosen_tuple)
 
-    # Se não gerou o suficiente, completar com aleatório validado
     while len(bets) < n_bets:
         chosen = sorted(rng.sample(range(1, total + 1), pick))
+        chosen_tuple = tuple(chosen)
+        if chosen_tuple in existing_bets:
+            continue
         valid, _ = is_bet_valid(chosen, patterns, lottery_name, quadrants)
-        if valid and tuple(chosen) not in {tuple(b) for b in bets}:
-            score = compute_bet_score(chosen, freq, delays, real_pairs, patterns, quadrants, total, max_freq, max_delay, max_pair)
+        if valid:
+            score = compute_bet_score(chosen, freq, delays, pair_score_map, patterns, quadrants, total, max_freq, max_delay, max_pair)
             bets.append(chosen)
             scores_list.append(score)
+            existing_bets.add(chosen_tuple)
 
-    # Trevos
     trevos_bets = []
     if cfg.get("tem_trevos") and trevos_matrix is not None:
         tf = compute_trevos_frequency(trevos_matrix, cfg["trevos_total"])
@@ -660,7 +636,6 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
                 t_chosen.add(rng.choices(t_nums, weights=t_weights, k=1)[0])
             trevos_bets.append(sorted(t_chosen))
 
-    # Mês
     mes_bets = []
     if cfg.get("tem_mes") and meses_series is not None:
         mf = compute_meses_frequency(meses_series, cfg["meses_total"])
@@ -737,7 +712,7 @@ def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_b
     return pd.DataFrame(resultados)
 
 # 
-# EXPORTAÇÃO EXCEL
+# EXPORTAÇÃO EXCEL (OTIMIZADA)
 # 
 def export_to_excel(bets, freq, delays, strong_pairs, lottery_name, trevos_bets=None, mes_bets=None, scores_list=None):
     cfg = LOTTERIES[lottery_name]
@@ -919,23 +894,20 @@ def main():
     apply_theme_css()
     theme = get_theme()
     st.title("🎲 Motor Analítico & Gerador de Apostas Multi-Loteria")
-    st.markdown("<span class='section-title'>API Caixa · Quadrantes · Score de Confiança · Ciclo de Completude · Conferidor</span>", unsafe_allow_html=True)
+    st.markdown("API Caixa · Quadrantes · Score de Confiança · Ciclo de Completude · Conferidor", unsafe_allow_html=True)
 
     if "gen_counter" not in st.session_state:
         st.session_state["gen_counter"] = 0
 
-    # ---------- SIDEBAR ----------
     with st.sidebar:
         st.header("⚙️ Configurações")
         st.session_state["theme"] = st.radio("Tema", ["Branco","Azul"], index=0 if st.session_state.get("theme","Branco")=="Branco" else 1, key="theme_radio")
         theme = get_theme()
         apply_theme_css()
         st.divider()
-
         lottery_name = st.selectbox("🎯 Loteria", list(LOTTERIES.keys()), index=0, key="lottery_select")
         cfg = LOTTERIES[lottery_name]
         st.divider()
-
         st.subheader("📁 Fonte de Dados")
         st.markdown("**🌐 API da Caixa** (dados reais)")
         n_concursos_api = st.slider("Quantos concursos buscar da Caixa?", 10, 100, 30, key="n_concursos_slider_api")
@@ -948,12 +920,10 @@ def main():
                     st.sidebar.success(f"✅ {len(df_caixa)} concursos reais carregados!")
                 else:
                     st.sidebar.error("❌ Não foi possível buscar dados da Caixa. Usando fallback.")
-
         st.divider()
         st.markdown("**📁 Ou suba um arquivo**")
         uploaded_file = st.file_uploader("CSV ou Excel", type=["csv","xlsx","xls"], key="file_uploader")
         use_mock = st.checkbox("Usar dados mockados como fallback", value=True, key="use_mock_checkbox")
-
         st.divider()
         st.subheader("🎲 Gerador de Apostas")
         n_bets = st.slider("Número de apostas", 1, 50, 10, key="n_bets_slider")
@@ -962,7 +932,6 @@ def main():
         w_delay = st.slider("Peso Atraso", 0.0, 1.0, 0.3, 0.05, key="weight_delay_slider")
         w_pairs = st.slider("Peso Pares Fortes", 0.0, 1.0, 0.3, 0.05, key="weight_pairs_slider")
 
-    # ---------- CARREGAR DADOS ----------
     df_data = None
     if "df_caixa" in st.session_state and st.session_state["df_caixa"] is not None and st.session_state.get("data_source") == "caixa":
         df_data = st.session_state["df_caixa"]
@@ -985,7 +954,6 @@ def main():
     trevos_matrix = get_trevos_matrix(df_data, lottery_name) if cfg.get("tem_trevos") else None
     meses_series = get_meses_series(df_data, lottery_name) if cfg.get("tem_mes") else None
 
-    # ---------- MÉTRICAS GERAIS ----------
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         metric_card("Sorteios Analisados", n_draws, "Histórico")
@@ -1005,20 +973,17 @@ def main():
 
     st.divider()
 
-    # ---------- TABS ----------
     tab_gerador, tab_conferidor, tab_fechamento, tab_padroes, tab_backtest, tab_dados = st.tabs([
         "🎰 Gerador", "✅ Conferidor", "🔢 Fechamento", "📊 Padrões", "🔬 Backtesting", "📋 Dados"
     ])
 
-    # ===== TAB: GERADOR =====
     with tab_gerador:
         st.header("🎰 Gerador de Apostas Otimizado")
         st.markdown("Combina **frequência**, **atraso**, **pares fortes**, **quadrantes**, **score de confiança** e **ciclo de completude**.")
         if st.session_state["gen_counter"] > 0:
             st.caption(f"🔄 Geração #{st.session_state['gen_counter']}")
-
         if st.button("⚡ Gerar Apostas", type="primary", key="gerar_apostas_button"):
-            with st.spinner("Gerando apostas otimizadas com validação de padrões..."):
+            with st.spinner("Gerando apostas otimizadas..."):
                 max_attempts = 3
                 for attempt in range(max_attempts):
                     bets, scores_list, freq, delays, real_pairs, patterns, quadrants, cycle, trevos_bets, mes_bets, rejection_reasons = generate_bets(
@@ -1030,7 +995,6 @@ def main():
                     if bets_are_unique(bets, old_bets) or attempt == max_attempts - 1:
                         break
                     time.sleep(0.01)
-
                 strong_pairs = find_strong_pairs(real_pairs, top_n=20)
                 st.session_state["bets"] = bets
                 st.session_state["scores_list"] = scores_list
@@ -1057,10 +1021,7 @@ def main():
             quadrants = st.session_state.get("quadrants", {})
             cycle = st.session_state.get("cycle", {})
             rejection_reasons = st.session_state.get("rejection_reasons", [])
-
             st.subheader(f"{len(bets)} Apostas Geradas")
-
-            # DataFrame com apostas e scores
             df_bets = pd.DataFrame(bets, columns=[f"d{i+1}" for i in range(len(bets[0]))])
             df_bets.insert(0, "#", range(1, len(bets) + 1))
             if scores_list:
@@ -1071,12 +1032,8 @@ def main():
             if mes_bets:
                 df_bets["Mês"] = [cfg["meses_lista"][m - 1] for m in mes_bets]
             st.dataframe(df_bets, use_container_width=True, hide_index=True)
-
-            # Gráfico de scores
             if scores_list:
                 st.plotly_chart(plot_scores_bar(scores_list, theme), use_container_width=True)
-
-            # Ciclo de completude
             if cycle:
                 col_cyc1, col_cyc2 = st.columns([1, 2])
                 with col_cyc1:
@@ -1089,38 +1046,32 @@ def main():
                         missing_str = ", ".join(str(m) for m in cycle["missing"][:20])
                         st.markdown(f"**Dezenas faltando:** {missing_str}{'...' if len(cycle['missing']) > 20 else ''}")
                         st.caption("Dezenas faltando no ciclo recebem +15% no score quando o ciclo > 70%.")
-
-            # Estatísticas de rejeição
             if rejection_reasons:
                 with st.expander(f"📊 Estatísticas de Validação ({len(rejection_reasons)} apostas rejeitadas)"):
                     reason_counts = Counter(rejection_reasons)
                     df_rej = pd.DataFrame([{"Motivo": k, "Quantidade": v} for k, v in reason_counts.most_common()])
                     st.dataframe(df_rej, use_container_width=True, hide_index=True)
                     st.caption("Apostas rejeitadas não chegam ao resultado final — o gerador cria novas até passar em todos os critérios.")
-
-            # Visualização
             st.markdown("### Visualização")
             cols = st.columns(min(len(bets), 5))
             for i, bet in enumerate(bets[:10]):
                 with cols[i % len(cols)]:
                     balls_html = " ".join([
-                        f"<span style='display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:50%;background:{theme['accent']};color:white;font-weight:bold;margin:2px;font-size:0.75rem;'>{n}</span>"
+                        f"{n}"
                         for n in bet
                     ])
                     extra_html = ""
                     if trevos_bets:
                         trevos_html = " ".join([
-                            f"<span style='display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:50%;background:#FF8C00;color:white;font-weight:bold;margin:2px;font-size:0.75rem;'>🍀{t}</span>"
+                            f"🍀{t}"
                             for t in trevos_bets[i]
                         ])
-                        extra_html = f"<br>{trevos_html}"
+                        extra_html = f"{trevos_html}"
                     if mes_bets:
                         mes_nome = cfg["meses_lista"][mes_bets[i] - 1]
-                        extra_html += f"<br><span style='display:inline-block;padding:4px 10px;border-radius:8px;background:#FF69B4;color:white;font-weight:bold;margin:2px;font-size:0.75rem;'>📅 {mes_nome}</span>"
-                    score_badge = f"<span style='display:inline-block;padding:2px 8px;border-radius:6px;background:#28a745;color:white;font-weight:bold;font-size:0.7rem;margin-left:6px;'>Score: {scores_list[i]}</span>" if scores_list else ""
-                    st.markdown(f"<div style='padding:8px;background:{theme['card']};border-radius:10px;margin:4px 0;'><b>Aposta {i+1}</b>{score_badge}<br>{balls_html}{extra_html}</div>", unsafe_allow_html=True)
-
-            # Gráficos
+                        extra_html += f"📅 {mes_nome}"
+                    score_badge = f"Score: {scores_list[i]}" if scores_list else ""
+                    st.markdown(f"Aposta {i+1}{score_badge}{balls_html}{extra_html}", unsafe_allow_html=True)
             col_g1, col_g2 = st.columns(2)
             with col_g1:
                 st.plotly_chart(plot_frequency_bar(freq, cfg["dezenas_total"], theme), use_container_width=True)
@@ -1137,15 +1088,11 @@ def main():
             if cfg.get("tem_mes") and meses_series is not None:
                 mf = compute_meses_frequency(meses_series, cfg["meses_total"])
                 st.plotly_chart(plot_meses_frequency(mf, cfg["meses_lista"], theme), use_container_width=True)
-
-            # Pares fortes
             st.subheader("🔗 Pares Fortes (Monte Carlo + Histórico)")
             df_pairs = pd.DataFrame(strong_pairs, columns=["Par","Ocorrências"])
             df_pairs["Dezena_A"] = df_pairs["Par"].apply(lambda x: x[0])
             df_pairs["Dezena_B"] = df_pairs["Par"].apply(lambda x: x[1])
             st.dataframe(df_pairs[["Dezena_A","Dezena_B","Ocorrências"]].head(15), use_container_width=True, hide_index=True)
-
-            # Exportação
             st.subheader("📥 Exportação")
             excel_data = export_to_excel(bets, freq, delays, strong_pairs, lottery_name, trevos_bets, mes_bets, scores_list)
             st.download_button(
@@ -1160,7 +1107,6 @@ def main():
         else:
             st.info("Clique em **⚡ Gerar Apostas** para criar combinações otimizadas.")
 
-    # ===== TAB: CONFERIDOR =====
     with tab_conferidor:
         st.header("✅ Conferidor de Resultados")
         st.markdown("Confere suas apostas geradas contra o **último sorteio real** da Caixa.")
@@ -1188,25 +1134,25 @@ def main():
                 pick = cfg["dezenas_aposta"]
                 dezenas_sort = [sorteio.get(f"d{i+1}") for i in range(pick) if sorteio.get(f"d{i+1}") is not None]
                 dezenas_html = " ".join([
-                    f"<span style='display:inline-block;width:36px;height:36px;line-height:36px;text-align:center;border-radius:50%;background:#28a745;color:white;font-weight:bold;margin:3px;font-size:1rem;'>{n:02d}</span>"
+                    f"{n:02d}"
                     for n in dezenas_sort
                 ])
-                st.markdown(f"<div style='padding:12px;background:{theme['card']};border-radius:12px;margin:8px 0;'>{dezenas_html}</div>", unsafe_allow_html=True)
+                st.markdown(f"{dezenas_html}", unsafe_allow_html=True)
                 trevos_sort = None
                 if cfg.get("tem_trevos"):
                     trevos_sort = [sorteio.get(f"t{i+1}") for i in range(cfg["trevos_aposta"]) if sorteio.get(f"t{i+1}") is not None]
                     if trevos_sort:
                         trevos_html = " ".join([
-                            f"<span style='display:inline-block;width:36px;height:36px;line-height:36px;text-align:center;border-radius:50%;background:#FF8C00;color:white;font-weight:bold;margin:3px;font-size:1rem;'>🍀{t}</span>"
+                            f"🍀{t}"
                             for t in trevos_sort
                         ])
-                        st.markdown(f"<div style='padding:8px;'>{trevos_html}</div>", unsafe_allow_html=True)
+                        st.markdown(f"{trevos_html}", unsafe_allow_html=True)
                 mes_sort = None
                 if cfg.get("tem_mes"):
                     mes_sort = sorteio.get("mes")
                     if mes_sort and 1 <= mes_sort <= 12:
                         mes_nome = cfg["meses_lista"][mes_sort - 1]
-                        st.markdown(f"<div style='padding:8px;'><span style='display:inline-block;padding:6px 16px;border-radius:8px;background:#FF69B4;color:white;font-weight:bold;font-size:1rem;'>📅 {mes_nome}</span></div>", unsafe_allow_html=True)
+                        st.markdown(f"📅 {mes_nome}", unsafe_allow_html=True)
             if "bets" in st.session_state and st.session_state["bets"] and dezenas_sort:
                 bets = st.session_state["bets"]
                 trevos_bets = st.session_state.get("trevos_bets", [])
@@ -1244,7 +1190,6 @@ def main():
         else:
             st.info("Clique em **🔄 Buscar último sorteio** para carregar o resultado mais recente da Caixa.")
 
-    # ===== TAB: FECHAMENTO =====
     with tab_fechamento:
         st.header("🔢 Fechamento Matemático")
         st.markdown("Gera combinações matemáticas a partir de dezenas escolhidas, com filtros opcionais.")
@@ -1326,7 +1271,6 @@ def main():
         else:
             st.info("Digite suas dezenas acima e clique em **🔢 Gerar Fechamento**.")
 
-    # ===== TAB: PADRÕES =====
     with tab_padroes:
         st.header("📊 Padrões Comportamentais")
         patterns = compute_patterns(draws_matrix, cfg["dezenas_total"])
@@ -1341,7 +1285,6 @@ def main():
         st.plotly_chart(plot_sum_distribution(patterns, theme), use_container_width=True)
         st.plotly_chart(plot_patterns(patterns, theme), use_container_width=True)
 
-    # ===== TAB: BACKTESTING =====
     with tab_backtest:
         st.header("🔬 Backtesting no Histórico")
         if "bets" not in st.session_state or not st.session_state["bets"]:
@@ -1372,7 +1315,6 @@ def main():
                     else:
                         st.info("Nenhum prêmio encontrado.")
 
-    # ===== TAB: DADOS =====
     with tab_dados:
         st.header("📋 Dados do Histórico")
         fonte = st.session_state.get("data_source", "mock/upload")
@@ -1381,12 +1323,11 @@ def main():
         if st.checkbox("Mostrar estatísticas descritivas", key="mostrar_estatisticas_check"):
             st.dataframe(df_data.describe(), use_container_width=True)
 
-    # ---------- FOOTER ----------
     st.divider()
     st.markdown(
-        f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>"
+        f""
         f"Motor Analítico de Loterias · API Caixa · Quadrantes · Score · Ciclo · "
-        f"{datetime.now().year} · Jogue com responsabilidade.</div>",
+        f"{datetime.now().year} · Jogue com responsabilidade.",
         unsafe_allow_html=True
     )
 
