@@ -56,6 +56,14 @@ LOTTERIES = {
     },
 }
 
+PREMIOS_ESTIMADOS = {
+    "Mega Sena": {"Sena": 50_000_000, "Quina": 50_000, "Quadra": 1500},
+    "Lotofácil": {"Sena": 2_000_000, "Quina": 1000, "Loteria": 25},
+    "Quina": {"Quina": 1_000_000, "Quadra": 10_000, "Terno": 200, "Duque": 5},
+    "+Milionária": {"Sena": 100_000_000, "Quina": 30_000, "Quadra": 1000},
+    "Dia de Sorte": {"Sena+Mês": 500_000, "Sena": 50_000, "Quina": 3000, "Quadra": 100},
+}
+
 THEME_COLORS = {
     "Branco": {"bg": "#FFFFFF", "text": "#1E3A5F", "accent": "#1E90FF", "card": "#F0F8FF"},
     "Azul": {"bg": "#0A1628", "text": "#E6F0FF", "accent": "#00BFFF", "card": "#13294B"},
@@ -630,8 +638,14 @@ def bets_are_unique(new_bets, old_bets):
 def run_backtest(bets, draws_matrix, lottery_name):
     cfg = LOTTERIES[lottery_name]
     premios = cfg["premios"]
+    custo_unit = cfg.get("custo_aposta", 5.0)
+    premios_est = PREMIOS_ESTIMADOS.get(lottery_name, {})
+    n_concursos = len(draws_matrix)
+    n_bets = len(bets)
+    custo_total = n_bets * custo_unit * n_concursos
     results = {label: 0 for label in set(premios.values())}
     results["Nenhum"] = 0
+    premios_total = 0.0
     detail_rows = []
     bet_sets = [set(b) for b in bets]
     for draw_idx, row in enumerate(draws_matrix):
@@ -641,10 +655,49 @@ def run_backtest(bets, draws_matrix, lottery_name):
             label = premios.get(hits, None)
             if label:
                 results[label] = results.get(label, 0) + 1
-                detail_rows.append({"Concurso": draw_idx + 1, "Aposta #": bet_idx + 1, "Acertos": hits, "Prêmio": label})
+                valor_est = premios_est.get(label, 0)
+                premios_total += valor_est
+                detail_rows.append({
+                    "Concurso": draw_idx + 1,
+                    "Aposta #": bet_idx + 1,
+                    "Acertos": hits,
+                    "Prêmio": label,
+                    "Valor Est. (R$)": valor_est,
+                })
             elif hits >= 3:
                 results["Nenhum"] += 1
-    return results, pd.DataFrame(detail_rows)
+    roi = ((premios_total - custo_total) / custo_total * 100) if custo_total > 0 else 0
+    roi_data = {
+        "custo_total": custo_total,
+        "premios_total": premios_total,
+        "roi_pct": roi,
+        "lucro_liquido": premios_total - custo_total,
+        "n_bets": n_bets,
+        "n_concursos": n_concursos,
+    }
+    return results, pd.DataFrame(detail_rows), roi_data
+
+def compare_strategies(lottery_name, draws_matrix, n_bets=10, weight_freq=0.4, weight_delay=0.3, weight_pairs=0.3, trevos_matrix=None, meses_series=None):
+    strategies = ["híbrido", "frequentes", "atrasadas", "aleatória"]
+    comparison = []
+    for strat in strategies:
+        bets, scores_list, freq, delays, real_pairs, patterns, quadrants, cycle, trevos_bets, mes_bets, rej = generate_bets(
+            lottery_name, draws_matrix, n_bets=n_bets, strategy=strat,
+            weight_freq=weight_freq, weight_delay=weight_delay, weight_pairs=weight_pairs,
+            trevos_matrix=trevos_matrix, meses_series=meses_series,
+        )
+        results, df_detail, roi_data = run_backtest(bets, draws_matrix, lottery_name)
+        total_premios = sum(v for k, v in results.items() if k != "Nenhum")
+        comparison.append({
+            "Estratégia": strat.capitalize(),
+            "Apostas": len(bets),
+            "Prêmios Ganhos": total_premios,
+            "Custo Total (R$)": roi_data["custo_total"],
+            "Prêmios Total (R$)": roi_data["premios_total"],
+            "ROI %": roi_data["roi_pct"],
+            "Lucro/Prejuízo (R$)": roi_data["lucro_liquido"],
+        })
+    return pd.DataFrame(comparison)
 
 def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_bets=None, trevos_sort=None, mes_sort=None):
     cfg = LOTTERIES[lottery_name]
@@ -796,8 +849,9 @@ def plot_backtest_results(results, theme):
     labels = [p[0] for p in pairs]
     values = [p[1] for p in pairs]
     fig = go.Figure(data=[go.Bar(x=labels, y=values, marker_color=theme["accent"], text=values, textposition="auto")])
-    fig.update_layout(title="Resultado do Backtesting", xaxis_title="Categoria", yaxis_title="Ocorrências",
-        template="plotly_white", height=400, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.update_layout(title="Resultado do Backtesting (Ordem Crescente)", xaxis_title="Categoria de Prêmio",
+        yaxis_title="Ocorrências", template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_scores_bar(scores_list, theme):
@@ -903,7 +957,7 @@ def main():
     st.markdown(f"""
     <div class="main-header">
         <div class="main-title">🎲 Motor Analítico & Gerador de Apostas</div>
-        <div class="main-subtitle">API Caixa · Quadrantes · Score de Confiança · Ciclo de Completude · Conferidor</div>
+        <div class="main-subtitle">API Caixa · Quadrantes · Score de Confiança · Ciclo de Completude · Conferidor · ROI</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1113,13 +1167,10 @@ def main():
                 st.divider()
                 st.subheader("🎯 Conferência das suas Apostas")
                 df_conf = conferir_apostas(
-                    bets,
-                    dezenas_sort,
-                    lottery_name,
+                    bets, dezenas_sort, lottery_name,
                     trevos_bets if trevos_bets else None,
                     mes_bets if mes_bets else None,
-                    trevos_sort,
-                    mes_sort,
+                    trevos_sort, mes_sort,
                 )
                 st.dataframe(df_conf, use_container_width=True, hide_index=True)
                 tem_premio = df_conf[df_conf["Prêmio"] != "-"]
@@ -1239,34 +1290,124 @@ def main():
         st.plotly_chart(plot_patterns(patterns, theme), use_container_width=True)
 
     with tab_backtest:
-        st.header("🔬 Backtesting no Histórico")
+        st.header("🔬 Backtesting & Análise de ROI")
         if "bets" not in st.session_state or not st.session_state["bets"]:
             st.warning("Gere apostas primeiro na aba **Gerador**.")
         else:
             bets = st.session_state["bets"]
-            st.info(f"{len(bets)} apostas contra {n_draws} sorteios.")
-            if st.button("🧪 Testar no Histórico", type="primary", key="testar_historico_button"):
-                with st.spinner("Executando backtesting..."):
-                    results, df_detail = run_backtest(bets, draws_matrix, lottery_name)
-                    st.session_state["backtest_results"] = results
-                    st.session_state["backtest_detail"] = df_detail
+            st.info(f"**{len(bets)} apostas** contra **{n_draws} sorteios** do histórico.")
+            col_bt1, col_bt2 = st.columns([1, 1])
+            with col_bt1:
+                if st.button("🧪 Testar no Histórico", type="primary", key="testar_historico_button"):
+                    with st.spinner("Executando backtesting com cálculo de ROI..."):
+                        results, df_detail, roi_data = run_backtest(bets, draws_matrix, lottery_name)
+                        st.session_state["backtest_results"] = results
+                        st.session_state["backtest_detail"] = df_detail
+                        st.session_state["backtest_roi"] = roi_data
+            with col_bt2:
+                if st.button("📊 Comparar Estratégias", type="secondary", key="comparar_estrategias_button"):
+                    with st.spinner("Comparando as 4 estratégias..."):
+                        df_comp = compare_strategies(
+                            lottery_name, draws_matrix, n_bets=n_bets,
+                            weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs,
+                            trevos_matrix=trevos_matrix, meses_series=meses_series,
+                        )
+                        st.session_state["df_comparacao"] = df_comp
+
             if "backtest_results" in st.session_state:
                 results = st.session_state["backtest_results"]
                 df_detail = st.session_state["backtest_detail"]
+                roi_data = st.session_state.get("backtest_roi", {})
+
                 st.plotly_chart(plot_backtest_results(results, theme), use_container_width=True)
+
+                if roi_data:
+                    st.markdown("### 💰 Análise Financeira (ROI)")
+                    col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+                    with col_r1:
+                        custo_fmt = f"R$ {roi_data['custo_total']:,.2f}"
+                        metric_card("Custo Total", custo_fmt, f"{roi_data['n_bets']} ap x {roi_data['n_concursos']} concursos")
+                    with col_r2:
+                        premios_fmt = f"R$ {roi_data['premios_total']:,.2f}"
+                        metric_card("Prêmios Estimados", premios_fmt, "Valores médios históricos")
+                    with col_r3:
+                        roi_val = roi_data['roi_pct']
+                        roi_color = "#28a745" if roi_val >= 0 else "#dc3545"
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-label">ROI</div>
+                            <div class="metric-value" style="color:{roi_color};">{roi_val:+.1f}%</div>
+                            <div class="metric-sub">Retorno sobre investimento</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    with col_r4:
+                        lucro = roi_data['lucro_liquido']
+                        lucro_color = "#28a745" if lucro >= 0 else "#dc3545"
+                        lucro_fmt = f"R$ {lucro:,.2f}"
+                        st.markdown(f"""
+                        <div class="metric-card">
+                            <div class="metric-label">Lucro / Prejuízo</div>
+                            <div class="metric-value" style="color:{lucro_color};">{lucro_fmt}</div>
+                            <div class="metric-sub">Prêmios - Custo</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    st.caption("⚠️ Valores de prêmios são **estimativas médias** baseadas em sorteios históricos. Prêmios reais variam conforme acúmulo e número de ganhadores.")
+
                 col_b1, col_b2 = st.columns([1, 2])
                 with col_b1:
-                    st.subheader("Resumo de Prêmios")
-                    df_res = pd.DataFrame([{"Prêmio":k,"Ocorrências":v} for k,v in results.items() if v > 0])
-                    df_res = df_res.sort_values("Ocorrências", ascending=False)
-                    st.dataframe(df_res, use_container_width=True, hide_index=True)
-                with col_b2:
-                    st.subheader("Detalhamento")
-                    if not df_detail.empty:
-                        df_detail_display = df_detail.sort_values("Acertos", ascending=False)
-                        st.dataframe(df_detail_display.head(50), use_container_width=True, hide_index=True)
+                    st.subheader("📊 Resumo de Prêmios")
+                    df_res = pd.DataFrame([
+                        {"Prêmio": k, "Ocorrências": v}
+                        for k, v in results.items() if v > 0
+                    ])
+                    if not df_res.empty:
+                        df_res = df_res.sort_values("Ocorrências", ascending=False).reset_index(drop=True)
+                        st.dataframe(df_res, use_container_width=True, hide_index=True)
                     else:
                         st.info("Nenhum prêmio encontrado.")
+
+                with col_b2:
+                    st.subheader("📋 Detalhamento")
+                    if not df_detail.empty:
+                        df_detail_display = df_detail.sort_values(
+                            ["Acertos", "Concurso"], ascending=[False, True]
+                        ).reset_index(drop=True)
+                        st.dataframe(df_detail_display.head(50), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Nenhum prêmio encontrado no histórico.")
+
+            if "df_comparacao" in st.session_state:
+                st.divider()
+                st.markdown("### ⚔️ Comparação de Estratégias (ROI)")
+                df_comp = st.session_state["df_comparacao"]
+                df_comp_display = df_comp.copy()
+                df_comp_display["Custo Total (R$)"] = df_comp_display["Custo Total (R$)"].apply(lambda x: f"R$ {x:,.2f}")
+                df_comp_display["Prêmios Total (R$)"] = df_comp_display["Prêmios Total (R$)"].apply(lambda x: f"R$ {x:,.2f}")
+                df_comp_display["Lucro/Prejuízo (R$)"] = df_comp_display["Lucro/Prejuízo (R$)"].apply(lambda x: f"R$ {x:,.2f}")
+                df_comp_display["ROI %"] = df_comp_display["ROI %"].apply(lambda x: f"{x:+.1f}%")
+                st.dataframe(df_comp_display, use_container_width=True, hide_index=True)
+
+                fig_comp = go.Figure()
+                colors = ["#28a745" if v >= 0 else "#dc3545" for v in df_comp["ROI %"]]
+                fig_comp.add_trace(go.Bar(
+                    x=df_comp["Estratégia"],
+                    y=df_comp["ROI %"],
+                    marker_color=colors,
+                    text=[f"{v:+.1f}%" for v in df_comp["ROI %"]],
+                    textposition="auto",
+                ))
+                fig_comp.update_layout(
+                    title="ROI por Estratégia (%)",
+                    xaxis_title="Estratégia",
+                    yaxis_title="ROI %",
+                    template="plotly_white",
+                    height=350,
+                    paper_bgcolor=theme["bg"],
+                    plot_bgcolor=theme["bg"],
+                    font=dict(color=theme["text"]),
+                )
+                st.plotly_chart(fig_comp, use_container_width=True)
+                st.caption("Verde = ROI positivo (lucro). Vermelho = ROI negativo (prejuízo). Prêmios estimados com valores médios históricos.")
 
     with tab_dados:
         st.header("📋 Dados do Histórico")
@@ -1279,7 +1420,7 @@ def main():
     st.divider()
     st.markdown(
         f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>"
-        f"Motor Analítico de Loterias · API Caixa · Quadrantes · Score · Ciclo · "
+        f"Motor Analítico de Loterias · API Caixa · Quadrantes · Score · Ciclo · ROI · "
         f"{datetime.now().year} · Jogue com responsabilidade.</div>",
         unsafe_allow_html=True
     )
