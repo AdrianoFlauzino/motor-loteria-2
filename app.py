@@ -845,8 +845,8 @@ def plot_sum_distribution(patterns, theme):
     mean = patterns["sum_mean"]
     std = patterns["sum_std"]
     fig.add_vline(x=mean, line_dash="dash", line_color="red", annotation_text=f"Média: {mean:.1f}")
-    fig.add_vline(x=mean + std, line_dash="dot", line_color="orange", annotation_text=f"+1σ")
-    fig.add_vline(x=mean - std, line_dash="dot", line_color="orange", annotation_text=f("-1σ"))
+    fig.add_vline(x=mean + std, line_dash="dot", line_color="orange", annotation_text="+1σ")
+    fig.add_vline(x=mean - std, line_dash="dot", line_color="orange", annotation_text="-1σ")
     fig.update_layout(title="Histograma da Soma das Dezenas", xaxis_title="Soma", yaxis_title="Frequência",
         template="plotly_white", height=420, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
