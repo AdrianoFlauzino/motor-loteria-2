@@ -585,7 +585,6 @@ def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_b
         numeros_acertados = sorted(bet_set & sort_set)
         label = premios.get(hits, "")
 
-        # Trevos (+Milionária)
         trevo_hits = 0
         trevos_acertados = []
         if trevos_bets and trevos_sort:
@@ -594,7 +593,6 @@ def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_b
             trevo_hits = len(bet_trevo_set & trevo_set)
             trevos_acertados = sorted(bet_trevo_set & trevo_set)
 
-        # Mês (Dia de Sorte)
         mes_acertou = False
         if mes_bets and mes_sort:
             mes_acertou = (mes_bets[i] == mes_sort)
@@ -1024,4 +1022,223 @@ def main():
 
                 # Dezenas sorteadas
                 pick = cfg["dezenas_aposta"]
-                dezenas_sort =
+                dezenas_sort = [sorteio.get(f"d{i+1}") for i in range(pick) if sorteio.get(f"d{i+1}") is not None]
+                dezenas_html = " ".join([
+                    f"<span style='display:inline-block;width:36px;height:36px;line-height:36px;text-align:center;border-radius:50%;background:#28a745;color:white;font-weight:bold;margin:3px;font-size:1rem;'>{n:02d}</span>"
+                    for n in dezenas_sort
+                ])
+                st.markdown(f"<div style='padding:12px;background:{theme['card']};border-radius:12px;margin:8px 0;'>{dezenas_html}</div>", unsafe_allow_html=True)
+
+                # Trevos sorteados
+                trevos_sort = None
+                if cfg.get("tem_trevos"):
+                    trevos_sort = [sorteio.get(f"t{i+1}") for i in range(cfg["trevos_aposta"]) if sorteio.get(f"t{i+1}") is not None]
+                    if trevos_sort:
+                        trevos_html = " ".join([
+                            f"<span style='display:inline-block;width:36px;height:36px;line-height:36px;text-align:center;border-radius:50%;background:#FF8C00;color:white;font-weight:bold;margin:3px;font-size:1rem;'>🍀{t}</span>"
+                            for t in trevos_sort
+                        ])
+                        st.markdown(f"<div style='padding:8px;'>{trevos_html}</div>", unsafe_allow_html=True)
+
+                # Mês sorteado
+                mes_sort = None
+                if cfg.get("tem_mes"):
+                    mes_sort = sorteio.get("mes")
+                    if mes_sort and 1 <= mes_sort <= 12:
+                        mes_nome = cfg["meses_lista"][mes_sort - 1]
+                        st.markdown(f"<div style='padding:8px;'><span style='display:inline-block;padding:6px 16px;border-radius:8px;background:#FF69B4;color:white;font-weight:bold;font-size:1rem;'>📅 {mes_nome}</span></div>", unsafe_allow_html=True)
+
+            # Conferir apostas se existirem
+            if "bets" in st.session_state and st.session_state["bets"] and dezenas_sort:
+                bets = st.session_state["bets"]
+                trevos_bets = st.session_state.get("trevos_bets", [])
+                mes_bets = st.session_state.get("mes_bets", [])
+
+                st.divider()
+                st.subheader("🎯 Conferência das suas Apostas")
+
+                df_conf = conferir_apostas(
+                    bets,
+                    dezenas_sort,
+                    lottery_name,
+                    trevos_bets if trevos_bets else None,
+                    mes_bets if mes_bets else None,
+                    trevos_sort,
+                    mes_sort,
+                )
+
+                # Destacar prêmios
+                df_display = df_conf.copy()
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+                # Resumo
+                tem_premio = df_conf[df_conf["Prêmio"] != "-"]
+                if not tem_premio.empty:
+                    st.success(f"🎉 **{len(tem_premio)} aposta(s) premiada(s)!**")
+                    st.dataframe(tem_premio, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Nenhuma aposta premiada neste sorteio. Tente gerar novas apostas!")
+
+                # Estatísticas da conferência
+                col_c1, col_c2, col_c3 = st.columns(3)
+                with col_c1:
+                    max_hits = df_conf["Acertos"].max()
+                    metric_card("Máximo de Acertos", max_hits, f"em {len(bets)} apostas")
+                with col_c2:
+                    avg_hits = df_conf["Acertos"].mean()
+                    metric_card("Média de Acertos", f"{avg_hits:.1f}", "por aposta")
+                with col_c3:
+                    total_premios = len(tem_premio)
+                    metric_card("Apostas Premiadas", total_premios, "neste sorteio")
+            else:
+                st.info("Gere apostas na aba **Gerador** primeiro para conferir com este sorteio.")
+        else:
+            st.info("Clique em **🔄 Buscar último sorteio** para carregar o resultado mais recente da Caixa.")
+
+    # ===== TAB: FECHAMENTO =====
+    with tab_fechamento:
+        st.header("🔢 Fechamento Matemático")
+        st.markdown("Gera combinações matemáticas a partir de dezenas escolhidas, com filtros opcionais.")
+        dezenas_input = st.text_area("Digite as dezenas separadas por vírgula (ex: 5, 12, 23, 34, 47, 58)", value="", height=80, key="dezenas_textarea")
+        st.markdown("**Filtros (opcionais):**")
+        usar_filtros = st.checkbox("Ativar filtros", value=False, key="ativar_filtros_checkbox")
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            qtd_impares = st.slider("Qtd. ímpares", 0, cfg["dezenas_aposta"], cfg["dezenas_aposta"]//2, key="qtd_impares_slider") if usar_filtros else cfg["dezenas_aposta"]//2
+        with col_f2:
+            soma_min = int(cfg["dezenas_total"]*cfg["dezenas_aposta"]*0.3)
+            soma_max = int(cfg["dezenas_total"]*cfg["dezenas_aposta"]*0.7)
+            soma_intervalo = st.slider("Intervalo da soma", 1, cfg["dezenas_total"]*cfg["dezenas_aposta"], (soma_min, soma_max), key="soma_intervalo_slider") if usar_filtros else (1, cfg["dezenas_total"]*cfg["dezenas_aposta"])
+        with col_f3:
+            max_consec = st.slider("Máx. consecutivos", 1, cfg["dezenas_aposta"], cfg["dezenas_aposta"], key="max_consec_slider") if usar_filtros else cfg["dezenas_aposta"]
+
+        if st.button("🔢 Gerar Fechamento", type="primary", key="gerar_fechamento_button"):
+            try:
+                dezenas_list = sorted(set(int(x.strip()) for x in dezenas_input.split(",") if x.strip()))
+                pick = cfg["dezenas_aposta"]
+                if len(dezenas_list) < pick:
+                    st.warning(f"Você precisa de pelo menos {pick} dezenas.")
+                else:
+                    total_combinations = list(itertools.combinations(dezenas_list, pick))
+                    filtered = []
+                    for combo in total_combinations:
+                        if usar_filtros:
+                            if sum(1 for x in combo if x%2!=0) != qtd_impares:
+                                continue
+                            if not (soma_intervalo[0] <= sum(combo) <= soma_intervalo[1]):
+                                continue
+                            consec = max_consec_found = 1
+                            for i in range(1, len(combo)):
+                                if combo[i] == combo[i-1]+1:
+                                    consec += 1
+                                    max_consec_found = max(max_consec_found, consec)
+                                else:
+                                    consec = 1
+                            if max_consec_found > max_consec:
+                                continue
+                        filtered.append(sorted(combo))
+                    if not filtered:
+                        st.warning("Nenhuma combinação passou nos filtros.")
+                    else:
+                        st.session_state["fechamento_bets"] = filtered
+                        st.session_state["fechamento_total_original"] = len(total_combinations)
+                        st.session_state["fechamento_total_filtrado"] = len(filtered)
+            except ValueError:
+                st.error("Digite apenas números separados por vírgula.")
+
+        if "fechamento_bets" in st.session_state and st.session_state["fechamento_bets"]:
+            f_bets = st.session_state["fechamento_bets"]
+            total_orig = st.session_state["fechamento_total_original"]
+            total_filt = st.session_state["fechamento_total_filtrado"]
+            st.subheader(f"{len(f_bets)} Combinações Geradas")
+            col_r1, col_r2, col_r3 = st.columns(3)
+            with col_r1:
+                metric_card("Combinações Originais", total_orig, "Fechamento total")
+            with col_r2:
+                metric_card("Após Filtros", total_filt, "Combinações válidas")
+            with col_r3:
+                reducao = total_orig - total_filt
+                perc = (reducao/total_orig*100) if total_orig > 0 else 0
+                metric_card("Redução", f"{reducao} ({perc:.1f}%)", "Economia de apostas")
+            df_fech = pd.DataFrame(f_bets, columns=[f"d{i+1}" for i in range(cfg["dezenas_aposta"])])
+            df_fech.insert(0, "#", range(1, len(f_bets)+1))
+            st.dataframe(df_fech, use_container_width=True, hide_index=True)
+            excel_fech = export_to_excel(f_bets, freq, delays, strong_pairs if "strong_pairs" in st.session_state else [], lottery_name)
+            st.download_button(
+                label="📊 Baixar Fechamento em Excel",
+                data=excel_fech,
+                file_name=f"fechamento_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_excel_fechamento",
+            )
+            st.divider()
+            render_caixa_export(f_bets, lottery_name, download_key="fechamento")
+        else:
+            st.info("Digite suas dezenas acima e clique em **🔢 Gerar Fechamento**.")
+
+    # ===== TAB: PADRÕES =====
+    with tab_padroes:
+        st.header("📊 Padrões Comportamentais")
+        patterns = compute_patterns(draws_matrix, cfg["dezenas_total"])
+        col_p1, col_p2, col_p3 = st.columns(3)
+        with col_p1:
+            metric_card("Média Ímpar/Par", f"{patterns['impar_ratio_mean']:.1%}", "Proporção ímpares")
+        with col_p2:
+            metric_card("Média Primos", f"{patterns['prime_mean']:.2f}", "Por sorteio")
+        with col_p3:
+            metric_card("Média da Soma", f"{patterns['sum_mean']:.1f}", f"σ = {patterns['sum_std']:.1f}")
+        st.plotly_chart(plot_prime_impar_summary(patterns, theme), use_container_width=True)
+        st.plotly_chart(plot_sum_distribution(patterns, theme), use_container_width=True)
+        st.plotly_chart(plot_patterns(patterns, theme), use_container_width=True)
+
+    # ===== TAB: BACKTESTING =====
+    with tab_backtest:
+        st.header("🔬 Backtesting no Histórico")
+        if "bets" not in st.session_state or not st.session_state["bets"]:
+            st.warning("Gere apostas primeiro na aba **Gerador**.")
+        else:
+            bets = st.session_state["bets"]
+            st.info(f"{len(bets)} apostas contra {n_draws} sorteios.")
+            if st.button("🧪 Testar no Histórico", type="primary", key="testar_historico_button"):
+                with st.spinner("Executando backtesting..."):
+                    results, df_detail = run_backtest(bets, draws_matrix, lottery_name)
+                    st.session_state["backtest_results"] = results
+                    st.session_state["backtest_detail"] = df_detail
+            if "backtest_results" in st.session_state:
+                results = st.session_state["backtest_results"]
+                df_detail = st.session_state["backtest_detail"]
+                st.plotly_chart(plot_backtest_results(results, theme), use_container_width=True)
+                col_b1, col_b2 = st.columns([1, 2])
+                with col_b1:
+                    st.subheader("Resumo de Prêmios")
+                    df_res = pd.DataFrame([{"Prêmio":k,"Ocorrências":v} for k,v in results.items() if v > 0])
+                    df_res = df_res.sort_values("Ocorrências", ascending=False)
+                    st.dataframe(df_res, use_container_width=True, hide_index=True)
+                with col_b2:
+                    st.subheader("Detalhamento")
+                    if not df_detail.empty:
+                        df_detail_display = df_detail.sort_values("Acertos", ascending=False)
+                        st.dataframe(df_detail_display.head(50), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Nenhum prêmio encontrado.")
+
+    # ===== TAB: DADOS =====
+    with tab_dados:
+        st.header("📋 Dados do Histórico")
+        fonte = st.session_state.get("data_source", "mock/upload")
+        st.caption(f"Fonte: {'API Caixa (real)' if fonte == 'caixa' else 'Upload/Mock'} | {len(df_data)} sorteios")
+        st.dataframe(df_data.head(100), use_container_width=True)
+        if st.checkbox("Mostrar estatísticas descritivas", key="mostrar_estatisticas_check"):
+            st.dataframe(df_data.describe(), use_container_width=True)
+
+    # ---------- FOOTER ----------
+    st.divider()
+    st.markdown(
+        f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>"
+        f"Motor Analítico de Loterias · API Caixa · Streamlit · Plotly · "
+        f"{datetime.now().year} · Jogue com responsabilidade.</div>",
+        unsafe_allow_html=True
+    )
+
+if __name__ == "__main__":
+    main()
