@@ -187,13 +187,13 @@ def get_theme():
 def apply_theme_css():
     theme = get_theme()
     st.markdown(f"""
-    
+    <style>
     .stApp {{ background-color: {theme['bg']}; color: {theme['text']}; }}
     .stTabs [data-baseweb="tab"] {{ color: {theme['text']}; }}
     .stTabs [aria-selected="true"] {{ color: {theme['accent']}; border-bottom-color: {theme['accent']}; }}
     .metric-card {{ background-color: {theme['card']}; border-radius: 12px; padding: 18px; margin: 6px 0; border-left: 4px solid {theme['accent']}; }}
     .section-title {{ color: {theme['accent']}; font-weight: 700; font-size: 1.3rem; }}
-    
+    </style>
     """, unsafe_allow_html=True)
 
 def metric_card(label, value, sub=""):
