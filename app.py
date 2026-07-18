@@ -374,6 +374,46 @@ def compute_hot_cold(draws_matrix, total_numbers, recent_n=20):
     }
 
 @st.cache_data(show_spinner=False)
+def compute_gap_analysis(draws_matrix, total_numbers):
+    n_draws = len(draws_matrix)
+    draw_sets = [set(row.tolist()) for row in draws_matrix]
+    gaps = {}
+    for num in range(1, total_numbers + 1):
+        appearances = []
+        for i in range(n_draws):
+            if num in draw_sets[i]:
+                appearances.append(i)
+        if len(appearances) == 0:
+            gaps[num] = {
+                "mean_gap": n_draws, "std_gap": 0, "current_gap": n_draws,
+                "z_score": 0, "overdue": False, "appearances": [],
+                "prob_next": 0.0,
+            }
+            continue
+        intervals = []
+        for i in range(1, len(appearances)):
+            intervals.append(appearances[i] - appearances[i - 1])
+        if not intervals:
+            intervals = [appearances[0]] if appearances[0] > 0 else [n_draws]
+        mean_gap = float(np.mean(intervals))
+        std_gap = float(np.std(intervals)) if len(intervals) > 1 else 0.0
+        last_pos = appearances[-1]
+        current_gap = n_draws - 1 - last_pos
+        z_score = ((current_gap - mean_gap) / std_gap) if std_gap > 0 else 0.0
+        overdue = current_gap > mean_gap + 2 * std_gap and std_gap > 0
+        prob_next = max(0.0, min(1.0, 1.0 / (mean_gap + 1) + (z_score * 0.05) if z_score > 0 else 1.0 / (mean_gap + 1)))
+        gaps[num] = {
+            "mean_gap": round(mean_gap, 2),
+            "std_gap": round(std_gap, 2),
+            "current_gap": current_gap,
+            "z_score": round(z_score, 2),
+            "overdue": overdue,
+            "appearances": appearances,
+            "prob_next": round(prob_next * 100, 1),
+        }
+    return gaps
+
+@st.cache_data(show_spinner=False)
 def compute_delays(draws_matrix, total_numbers):
     n_draws = len(draws_matrix)
     draw_sets = [set(row.tolist()) for row in draws_matrix]
@@ -555,6 +595,7 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
     patterns = compute_patterns(draws_matrix, total)
     quadrants = compute_quadrants(total, 4)
     cycle = compute_cycle_completion(draws_matrix, total)
+    gap_data = compute_gap_analysis(draws_matrix, total)
     max_freq = max(freq.values()) if max(freq.values()) > 0 else 1
     max_delay = max(delays.values()) if max(delays.values()) > 0 else 1
     pair_score_map = {num: 0.0 for num in range(1, total + 1)}
@@ -569,6 +610,8 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
         scores[num] = weight_freq * f_score + weight_delay * d_score
         if num in cycle["missing"] and cycle["completion_pct"] > 70:
             scores[num] *= 1.15
+        if gap_data[num]["overdue"]:
+            scores[num] *= 1.20
     for num in pair_score_map:
         scores[num] += weight_pairs * (pair_score_map[num] / max_pair)
     seed_base = int(time.time() * 1000) % (2**32)
@@ -844,6 +887,78 @@ def plot_hot_cold(hot_cold_data, total, theme):
     )
     return fig
 
+def plot_gap_analysis(gap_data, total, theme):
+    nums = list(range(1, total + 1))
+    current_gaps = [gap_data[n]["current_gap"] for n in nums]
+    mean_gaps = [gap_data[n]["mean_gap"] for n in nums]
+    colors = []
+    for n in nums:
+        if gap_data[n]["overdue"]:
+            colors.append("#FF4444")
+        elif gap_data[n]["z_score"] > 1:
+            colors.append("#FFA500")
+        else:
+            colors.append(theme["accent"])
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=nums, y=current_gaps,
+        marker_color=colors, name="Gap Atual",
+        text=[f"{g}" for g in current_gaps], textposition="auto",
+    ))
+    fig.add_trace(go.Scatter(
+        x=nums, y=mean_gaps,
+        mode="lines+markers", line=dict(color="#FF0000", dash="dash", width=2),
+        marker=dict(size=5), name="Média Histórica",
+    ))
+    fig.update_layout(
+        title="Gap Analysis: Intervalo Atual vs Média Histórica",
+        xaxis_title="Dezena", yaxis_title="Concursos sem aparecer",
+        template="plotly_white", height=450,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]), showlegend=True,
+    )
+    return fig
+
+def plot_gap_timeline(gap_data, num, n_draws, theme):
+    appearances = gap_data[num]["appearances"]
+    fig = go.Figure()
+    x_vals = list(range(n_draws))
+    y_vals = [1 if i in set(appearances) else 0 for i in range(n_draws)]
+    colors = ["#FF4444" if v == 1 else "#EEEEEE" for v in y_vals]
+    fig.add_trace(go.Bar(
+        x=x_vals, y=y_vals,
+        marker_color=colors, name=f"Dezena {num}",
+    ))
+    fig.update_layout(
+        title=f"Timeline de Aparições — Dezena {num}",
+        xaxis_title="Concurso (índice)", yaxis_title="Apareceu?",
+        template="plotly_white", height=250,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]), showlegend=False,
+    )
+    return fig
+
+def plot_prob_ranking(gap_data, total, theme):
+    nums = list(range(1, total + 1))
+    probs = [gap_data[n]["prob_next"] for n in nums]
+    sorted_idx = sorted(range(len(probs)), key=lambda i: probs[i], reverse=True)
+    sorted_nums = [nums[i] for i in sorted_idx]
+    sorted_probs = [probs[i] for i in sorted_idx]
+    colors = ["#FF4444" if gap_data[n]["overdue"] else theme["accent"] for n in sorted_nums]
+    fig = go.Figure(data=[go.Bar(
+        x=[str(n) for n in sorted_nums], y=sorted_probs,
+        marker_color=colors, text=[f"{p}%" for p in sorted_probs],
+        textposition="auto",
+    )])
+    fig.update_layout(
+        title="Ranking de Probabilidade para o Próximo Sorteio",
+        xaxis_title="Dezena (rank)", yaxis_title="Probabilidade Estimada (%)",
+        template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
 def plot_delays_bar(delays, total, theme, title_suffix=""):
     nums = list(range(1, total + 1))
     vals = [delays.get(n, 0) for n in nums]
@@ -989,7 +1104,9 @@ def main():
         w_pairs = st.slider("Peso Pares Fortes", 0.0, 1.0, 0.3, 0.05, key="weight_pairs_slider")
         st.divider()
         st.subheader("🔥 Hot / Cold Numbers")
-       
+        min_hot = st.slider("Mín. de Hot Numbers na aposta", 0, cfg["dezenas_aposta"], 0, key="min_hot_slider")
+        exclude_cold = st.checkbox("Excluir Cold Numbers", value=False, key="exclude_cold_checkbox")
+
     df_data = None
     if "df_caixa" in st.session_state and st.session_state["df_caixa"] is not None and st.session_state.get("data_source") == "caixa":
         df_data = st.session_state["df_caixa"]
@@ -1012,15 +1129,13 @@ def main():
     trevos_matrix = get_trevos_matrix(df_data, lottery_name) if cfg.get("tem_trevos") else None
     meses_series = get_meses_series(df_data, lottery_name) if cfg.get("tem_mes") else None
     hot_cold_data = compute_hot_cold(draws_matrix, cfg["dezenas_total"])
-    min_hot = st.sidebar.slider("Mín. de Hot Numbers na aposta", 0, cfg["dezenas_aposta"], 0, key="min_hot_slider")
-    exclude_cold = st.sidebar.checkbox("Excluir Cold Numbers", value=False, key="exclude_cold_checkbox")
     st.sidebar.caption(f"🔴 Hot = top 25% mais sorteados nos últimos {hot_cold_data['recent_n']} concursos")
     st.sidebar.caption(f"🔵 Cold = bottom 25% menos sorteados")
 
     st.markdown(f"""
     <div class="main-header">
         <div class="main-title">🎲 Motor Analítico & Gerador de Apostas</div>
-        <div class="main-subtitle">API Caixa · Quadrantes · Score · Ciclo · Hot/Cold · ROI · Conferidor</div>
+        <div class="main-subtitle">API Caixa · Quadrantes · Score · Ciclo · Hot/Cold · Gap Analysis · ROI · Conferidor</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1049,7 +1164,7 @@ def main():
 
     with tab_gerador:
         st.header("🎰 Gerador de Apostas Otimizado")
-        st.markdown("Combina **frequência**, **atraso**, **pares fortes**, **quadrantes**, **score**, **ciclo** e **hot/cold**.")
+        st.markdown("Combina **frequência**, **atraso**, **pares fortes**, **quadrantes**, **score**, **ciclo**, **hot/cold** e **gap analysis**.")
         if st.session_state["gen_counter"] > 0:
             st.caption(f"🔄 Geração #{st.session_state['gen_counter']}")
         if st.button("⚡ Gerar Apostas", type="primary", key="gerar_apostas_button"):
@@ -1363,6 +1478,40 @@ def main():
         with col_hc2:
             cold_nums = sorted(list(hot_cold_data["cold_set"]))
             st.markdown(f"**🔵 Cold Numbers:** {', '.join(str(n) for n in cold_nums)}")
+        st.divider()
+        st.subheader("📏 Gap Analysis (Análise de Intervalos)")
+        gap_data = compute_gap_analysis(draws_matrix, cfg["dezenas_total"])
+        st.plotly_chart(plot_gap_analysis(gap_data, cfg["dezenas_total"], theme), use_container_width=True)
+        overdue_nums = [n for n in range(1, cfg["dezenas_total"] + 1) if gap_data[n]["overdue"]]
+        if overdue_nums:
+            st.markdown(f"**🔴 Dezenas Overdue (gap > média + 2σ):** {', '.join(str(n) for n in sorted(overdue_nums))}")
+            st.caption("Dezenas overdue recebem +20% no score do gerador.")
+        col_gap1, col_gap2 = st.columns(2)
+        with col_gap1:
+            st.markdown("##### 📊 Tabela de Gaps")
+            gap_rows = []
+            for n in range(1, cfg["dezenas_total"] + 1):
+                g = gap_data[n]
+                gap_rows.append({
+                    "Dezena": n,
+                    "Gap Atual": g["current_gap"],
+                    "Média": g["mean_gap"],
+                    "σ": g["std_gap"],
+                    "Z-Score": g["z_score"],
+                    "Overdue": "🔴" if g["overdue"] else "",
+                    "Prob %": g["prob_next"],
+                })
+            df_gaps = pd.DataFrame(gap_rows)
+            df_gaps = df_gaps.sort_values("Z-Score", ascending=False).reset_index(drop=True)
+            st.dataframe(df_gaps, use_container_width=True, hide_index=True)
+        with col_gap2:
+            st.markdown("##### 🎯 Ranking de Probabilidade")
+            st.plotly_chart(plot_prob_ranking(gap_data, cfg["dezenas_total"], theme), use_container_width=True)
+        st.markdown("##### 🔍 Timeline Individual")
+        selected_num = st.selectbox("Selecione uma dezena para ver o timeline", range(1, cfg["dezenas_total"] + 1), key="gap_timeline_select")
+        st.plotly_chart(plot_gap_timeline(gap_data, selected_num, len(draws_matrix), theme), use_container_width=True)
+        g_sel = gap_data[selected_num]
+        st.caption(f"Dezena {selected_num}: média a cada {g_sel['mean_gap']:.1f} concursos | gap atual: {g_sel['current_gap']} | z-score: {g_sel['z_score']} | prob: {g_sel['prob_next']}%")
 
     with tab_backtest:
         st.header("🔬 Backtesting & Análise de ROI")
@@ -1495,7 +1644,7 @@ def main():
     st.divider()
     st.markdown(
         f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>"
-        f"Motor Analítico de Loterias · API Caixa · Quadrantes · Score · Ciclo · Hot/Cold · ROI · "
+        f"Motor Analítico de Loterias · API Caixa · Quadrantes · Score · Ciclo · Hot/Cold · Gap Analysis · ROI · "
         f"{datetime.now().year} · Jogue com responsabilidade.</div>",
         unsafe_allow_html=True
     )
