@@ -364,11 +364,15 @@ def compute_delays(draws_matrix, total_numbers):
 @st.cache_data(show_spinner=False)
 def monte_carlo_pairs(draws_matrix, total_numbers, iterations=1500):
     rng = np.random.default_rng(42)
-    samples = rng.choice(total_numbers, size=(iterations, 2), replace=False)
+    # replace=True: cada par tem 2 números distintos, mas pares diferentes
+    # podem repetir números entre si (comportamento correto para Monte Carlo)
+    samples = rng.choice(total_numbers, size=(iterations, 2), replace=True)
+    # Garantir que os 2 números de cada par sejam distintos
     pair_counts = Counter()
     for s in samples:
-        pair = tuple(sorted(s.tolist()))
-        pair_counts[pair] += 1
+        if s[0] != s[1]:
+            pair = tuple(sorted(s.tolist()))
+            pair_counts[pair] += 1
     real_pairs = Counter()
     for row in draws_matrix:
         for combo in itertools.combinations(sorted(row.tolist()), 2):
