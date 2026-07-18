@@ -354,6 +354,26 @@ def compute_frequency(draws_matrix, total_numbers):
     return {n: freq.get(n, 0) for n in range(1, total_numbers + 1)}
 
 @st.cache_data(show_spinner=False)
+def compute_hot_cold(draws_matrix, total_numbers, recent_n=20):
+    recent = draws_matrix[-recent_n:] if len(draws_matrix) >= recent_n else draws_matrix
+    flat = recent.flatten()
+    freq_recent = Counter(flat.tolist())
+    all_nums = list(range(1, total_numbers + 1))
+    freq_list = [(n, freq_recent.get(n, 0)) for n in all_nums]
+    freq_list.sort(key=lambda x: x[1], reverse=True)
+    n_hot = max(1, total_numbers // 4)
+    n_cold = max(1, total_numbers // 4)
+    hot_set = set(n for n, _ in freq_list[:n_hot])
+    cold_set = set(n for n, _ in freq_list[-n_cold:])
+    return {
+        "hot_set": hot_set,
+        "cold_set": cold_set,
+        "freq_recent": {n: freq_recent.get(n, 0) for n in all_nums},
+        "freq_list": freq_list,
+        "recent_n": len(recent),
+    }
+
+@st.cache_data(show_spinner=False)
 def compute_delays(draws_matrix, total_numbers):
     n_draws = len(draws_matrix)
     draw_sets = [set(row.tolist()) for row in draws_matrix]
@@ -524,7 +544,8 @@ def compute_bet_score(bet, freq, delays, pair_score_map, patterns, quadrants, to
 
 def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
                   weight_freq=0.4, weight_delay=0.3, weight_pairs=0.3,
-                  trevos_matrix=None, meses_series=None):
+                  trevos_matrix=None, meses_series=None,
+                  min_hot=0, exclude_cold=False, hot_set=None, cold_set=None):
     cfg = LOTTERIES[lottery_name]
     total = cfg["dezenas_total"]
     pick = cfg["dezenas_aposta"]
@@ -556,7 +577,7 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
     scores_list = []
     rejection_reasons = []
     existing_bets = set()
-    max_attempts = n_bets * 3
+    max_attempts = n_bets * 5
     nums_list = list(scores.keys())
     weights_list = [scores[n] + 0.01 for n in nums_list]
     attempts = 0
@@ -583,6 +604,16 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
             continue
         if chosen_tuple in existing_bets:
             continue
+        if min_hot > 0 and hot_set:
+            hot_count = len([n for n in chosen if n in hot_set])
+            if hot_count < min_hot:
+                rejection_reasons.append(f"Poucos hot numbers ({hot_count}<{min_hot})")
+                continue
+        if exclude_cold and cold_set:
+            cold_in_bet = [n for n in chosen if n in cold_set]
+            if cold_in_bet:
+                rejection_reasons.append(f"Cold numbers presentes ({len(cold_in_bet)})")
+                continue
         score = compute_bet_score(chosen, freq, delays, pair_score_map, patterns, quadrants, total, max_freq, max_delay, max_pair)
         if score < 35:
             rejection_reasons.append(f"Score baixo ({score})")
@@ -597,6 +628,9 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
             continue
         valid, _ = is_bet_valid(chosen, patterns, lottery_name, quadrants)
         if valid:
+            if exclude_cold and cold_set:
+                if any(n in cold_set for n in chosen):
+                    continue
             score = compute_bet_score(chosen, freq, delays, pair_score_map, patterns, quadrants, total, max_freq, max_delay, max_pair)
             bets.append(chosen)
             scores_list.append(score)
@@ -685,6 +719,7 @@ def compare_strategies(lottery_name, draws_matrix, n_bets=10, weight_freq=0.4, w
             lottery_name, draws_matrix, n_bets=n_bets, strategy=strat,
             weight_freq=weight_freq, weight_delay=weight_delay, weight_pairs=weight_pairs,
             trevos_matrix=trevos_matrix, meses_series=meses_series,
+            min_hot=0, exclude_cold=False, hot_set=None, cold_set=None,
         )
         results, df_detail, roi_data = run_backtest(bets, draws_matrix, lottery_name)
         total_premios = sum(v for k, v in results.items() if k != "Nenhum")
@@ -786,6 +821,27 @@ def plot_frequency_bar(freq, total, theme):
     fig = go.Figure(data=[go.Bar(x=nums, y=vals, marker_color=theme["accent"])])
     fig.update_layout(title="Frequência de Dezenas", xaxis_title="Dezena", yaxis_title="Frequência",
         template="plotly_white", height=400, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    return fig
+
+def plot_hot_cold(hot_cold_data, total, theme):
+    nums = list(range(1, total + 1))
+    vals = [hot_cold_data["freq_recent"].get(n, 0) for n in nums]
+    colors = []
+    for n in nums:
+        if n in hot_cold_data["hot_set"]:
+            colors.append("#FF4444")
+        elif n in hot_cold_data["cold_set"]:
+            colors.append("#4488FF")
+        else:
+            colors.append("#CCCCCC")
+    fig = go.Figure(data=[go.Bar(x=nums, y=vals, marker_color=colors, text=vals, textposition="auto")])
+    fig.update_layout(
+        title=f"Hot / Cold Numbers (últimos {hot_cold_data['recent_n']} sorteios)",
+        xaxis_title="Dezena", yaxis_title="Frequência",
+        template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
     return fig
 
 def plot_delays_bar(delays, total, theme, title_suffix=""):
@@ -931,7 +987,9 @@ def main():
         w_freq = st.slider("Peso Frequência", 0.0, 1.0, 0.4, 0.05, key="weight_freq_slider")
         w_delay = st.slider("Peso Atraso", 0.0, 1.0, 0.3, 0.05, key="weight_delay_slider")
         w_pairs = st.slider("Peso Pares Fortes", 0.0, 1.0, 0.3, 0.05, key="weight_pairs_slider")
-
+        st.divider()
+        st.subheader("🔥 Hot / Cold Numbers")
+       
     df_data = None
     if "df_caixa" in st.session_state and st.session_state["df_caixa"] is not None and st.session_state.get("data_source") == "caixa":
         df_data = st.session_state["df_caixa"]
@@ -953,11 +1011,16 @@ def main():
     n_draws = len(draws_matrix)
     trevos_matrix = get_trevos_matrix(df_data, lottery_name) if cfg.get("tem_trevos") else None
     meses_series = get_meses_series(df_data, lottery_name) if cfg.get("tem_mes") else None
+    hot_cold_data = compute_hot_cold(draws_matrix, cfg["dezenas_total"])
+    min_hot = st.sidebar.slider("Mín. de Hot Numbers na aposta", 0, cfg["dezenas_aposta"], 0, key="min_hot_slider")
+    exclude_cold = st.sidebar.checkbox("Excluir Cold Numbers", value=False, key="exclude_cold_checkbox")
+    st.sidebar.caption(f"🔴 Hot = top 25% mais sorteados nos últimos {hot_cold_data['recent_n']} concursos")
+    st.sidebar.caption(f"🔵 Cold = bottom 25% menos sorteados")
 
     st.markdown(f"""
     <div class="main-header">
         <div class="main-title">🎲 Motor Analítico & Gerador de Apostas</div>
-        <div class="main-subtitle">API Caixa · Quadrantes · Score de Confiança · Ciclo de Completude · Conferidor · ROI</div>
+        <div class="main-subtitle">API Caixa · Quadrantes · Score · Ciclo · Hot/Cold · ROI · Conferidor</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -986,7 +1049,7 @@ def main():
 
     with tab_gerador:
         st.header("🎰 Gerador de Apostas Otimizado")
-        st.markdown("Combina **frequência**, **atraso**, **pares fortes**, **quadrantes**, **score de confiança** e **ciclo de completude**.")
+        st.markdown("Combina **frequência**, **atraso**, **pares fortes**, **quadrantes**, **score**, **ciclo** e **hot/cold**.")
         if st.session_state["gen_counter"] > 0:
             st.caption(f"🔄 Geração #{st.session_state['gen_counter']}")
         if st.button("⚡ Gerar Apostas", type="primary", key="gerar_apostas_button"):
@@ -997,6 +1060,8 @@ def main():
                         lottery_name, draws_matrix, n_bets=n_bets,
                         strategy=strategy, weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs,
                         trevos_matrix=trevos_matrix, meses_series=meses_series,
+                        min_hot=min_hot, exclude_cold=exclude_cold,
+                        hot_set=hot_cold_data["hot_set"], cold_set=hot_cold_data["cold_set"],
                     )
                     old_bets = st.session_state.get("bets", [])
                     if bets_are_unique(bets, old_bets) or attempt == max_attempts - 1:
@@ -1064,7 +1129,7 @@ def main():
             for i, bet in enumerate(bets[:10]):
                 with cols[i % len(cols)]:
                     balls_html = " ".join([
-                        f"<span style='display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:50%;background:{theme['accent']};color:white;font-weight:bold;margin:2px;font-size:0.75rem;'>{n}</span>"
+                        f"<span style='display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:50%;background:{'#FF4444' if n in hot_cold_data['hot_set'] else ('#4488FF' if n in hot_cold_data['cold_set'] else theme['accent'])};color:white;font-weight:bold;margin:2px;font-size:0.75rem;'>{n}</span>"
                         for n in bet
                     ])
                     extra_html = ""
@@ -1288,6 +1353,16 @@ def main():
         st.plotly_chart(plot_prime_impar_summary(patterns, theme), use_container_width=True)
         st.plotly_chart(plot_sum_distribution(patterns, theme), use_container_width=True)
         st.plotly_chart(plot_patterns(patterns, theme), use_container_width=True)
+        st.divider()
+        st.subheader("🔥 Hot / Cold Numbers")
+        st.plotly_chart(plot_hot_cold(hot_cold_data, cfg["dezenas_total"], theme), use_container_width=True)
+        col_hc1, col_hc2 = st.columns(2)
+        with col_hc1:
+            hot_nums = sorted(list(hot_cold_data["hot_set"]))
+            st.markdown(f"**🔴 Hot Numbers:** {', '.join(str(n) for n in hot_nums)}")
+        with col_hc2:
+            cold_nums = sorted(list(hot_cold_data["cold_set"]))
+            st.markdown(f"**🔵 Cold Numbers:** {', '.join(str(n) for n in cold_nums)}")
 
     with tab_backtest:
         st.header("🔬 Backtesting & Análise de ROI")
@@ -1420,7 +1495,7 @@ def main():
     st.divider()
     st.markdown(
         f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>"
-        f"Motor Analítico de Loterias · API Caixa · Quadrantes · Score · Ciclo · ROI · "
+        f"Motor Analítico de Loterias · API Caixa · Quadrantes · Score · Ciclo · Hot/Cold · ROI · "
         f"{datetime.now().year} · Jogue com responsabilidade.</div>",
         unsafe_allow_html=True
     )
