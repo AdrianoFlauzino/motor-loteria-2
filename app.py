@@ -191,19 +191,72 @@ def apply_theme_css():
     .stApp {{ background-color: {theme['bg']}; color: {theme['text']}; }}
     .stTabs [data-baseweb="tab"] {{ color: {theme['text']}; }}
     .stTabs [aria-selected="true"] {{ color: {theme['accent']}; border-bottom-color: {theme['accent']}; }}
-    .metric-card {{ background-color: {theme['card']}; border-radius: 12px; padding: 18px; margin: 6px 0; border-left: 4px solid {theme['accent']}; }}
+    .main-header {{
+        background: linear-gradient(135deg, {theme['card']}, {theme['bg']});
+        border-radius: 16px;
+        padding: 24px 28px;
+        margin-bottom: 16px;
+        border: 1px solid {theme['accent']}33;
+    }}
+    .main-title {{
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: {theme['text']};
+        margin: 0;
+        line-height: 1.2;
+    }}
+    .main-subtitle {{
+        font-size: 0.85rem;
+        color: {theme['accent']};
+        font-weight: 600;
+        margin-top: 6px;
+        letter-spacing: 0.3px;
+    }}
+    .metric-card {{
+        background-color: {theme['card']};
+        border-radius: 14px;
+        padding: 20px 16px;
+        margin: 4px 0;
+        border: 1px solid {theme['accent']}22;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        text-align: center;
+        transition: transform 0.15s;
+    }}
+    .metric-card:hover {{
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    }}
+    .metric-label {{
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        opacity: 0.7;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }}
+    .metric-value {{
+        font-size: 1.75rem;
+        font-weight: 800;
+        color: {theme['accent']};
+        line-height: 1;
+        margin-bottom: 4px;
+    }}
+    .metric-sub {{
+        font-size: 0.7rem;
+        opacity: 0.6;
+        font-weight: 500;
+    }}
     .section-title {{ color: {theme['accent']}; font-weight: 700; font-size: 1.3rem; }}
     </style>
     """, unsafe_allow_html=True)
 
 def metric_card(label, value, sub=""):
-    theme = get_theme()
     st.markdown(f"""
-    
-        {label}
-        {value}
-        {sub}
-    
+    <div class="metric-card">
+        <div class="metric-label">{label}</div>
+        <div class="metric-value">{value}</div>
+        <div class="metric-sub">{sub}</div>
+    </div>
     """, unsafe_allow_html=True)
 
 # 
@@ -897,8 +950,29 @@ def main():
     st.set_page_config(page_title="Motor Analítico de Loterias", page_icon="🎲", layout="wide")
     apply_theme_css()
     theme = get_theme()
-    st.title("🎲 Motor Analítico & Gerador de Apostas Multi-Loteria")
-    st.markdown("API Caixa · Quadrantes · Score de Confiança · Ciclo de Completude · Conferidor", unsafe_allow_html=True)
+        st.markdown(f"""
+    <div class="main-header">
+        <div class="main-title">🎲 Motor Analítico & Gerador de Apostas</div>
+        <div class="main-subtitle">API Caixa · Quadrantes · Score de Confiança · Ciclo de Completude · Conferidor</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        metric_card("Sorteios Analisados", n_draws, "Histórico")
+    with col2:
+        metric_card("Dezenas / Aposta", cfg["dezenas_aposta"], lottery_name)
+    with col3:
+        extra = ""
+        if cfg.get("tem_trevos"):
+            extra = f" + {cfg['trevos_aposta']} trevos"
+        elif cfg.get("tem_mes"):
+            extra = " + 1 mês"
+        metric_card("Universo", f"{cfg['dezenas_total']}{extra}", "Total de dezenas")
+    with col4:
+        freq = compute_frequency(draws_matrix, cfg["dezenas_total"])
+        top_num = max(freq, key=freq.get)
+        metric_card("Dezena + Frequente", f"{top_num}", f"{freq[top_num]}x no histórico")
 
     if "gen_counter" not in st.session_state:
         st.session_state["gen_counter"] = 0
