@@ -552,15 +552,22 @@ def compute_alerts(total_numbers, gap_data, cycle):
     alerts = []
     for num in range(1, total_numbers + 1):
         g = gap_data[num]
-        if g["current_gap"] > g["mean_gap"] and g["mean_gap"] > 0:
-            max_hist = max(g["appearances"][0] if g["appearances"] else 0, g["current_gap"])
-            if g["current_gap"] >= max_hist:
+        if g["mean_gap"] > 0 and g["current_gap"] > g["mean_gap"] * 2:
+            appearances = g["appearances"]
+            if len(appearances) >= 2:
+                intervals = [appearances[i] - appearances[i-1] for i in range(1, len(appearances))]
+                max_interval = max(intervals) if intervals else 0
+            elif len(appearances) == 1:
+                max_interval = appearances[0]
+            else:
+                max_interval = 0
+            if g["current_gap"] > max_interval and g["current_gap"] >= 5:
                 alerts.append({
                     "tipo": "recorde_atraso",
                     "severidade": "alta",
                     "icone": "🔴",
                     "titulo": f"Dezena {num} em recorde de atraso",
-                    "detalhe": f"Gap atual: {g['current_gap']} concursos (média: {g['mean_gap']:.1f})",
+                    "detalhe": f"Gap atual: {g['current_gap']} concursos (máx. histórico: {max_interval}, média: {g['mean_gap']:.1f})",
                 })
     if cycle["completion_pct"] >= 99.9:
         alerts.append({
