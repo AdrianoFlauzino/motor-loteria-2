@@ -783,6 +783,142 @@ def bets_are_unique(new_bets, old_bets):
     old_set = {tuple(b) for b in old_bets}
     return all(tuple(b) not in old_set for b in new_bets)
 
+def apply_progressive_filters(combinations, filters, freq=None, delays=None, strong_pairs=None, hot_set=None, cold_set=None, quadrants=None, custo_unit=5.0):
+    steps = []
+    current = list(combinations)
+    total_original = len(current)
+    steps.append({
+        "filtro": "Combinações iniciais",
+        "restantes": total_original,
+        "reduzidas": 0,
+        "redução_pct": 0.0,
+        "economia": 0.0,
+    })
+    def apply_filter(combos, f):
+        result = []
+        for c in combos:
+            c_sorted = sorted(c)
+            if f.get("soma_min") is not None and sum(c_sorted) < f["soma_min"]:
+                continue
+            if f.get("soma_max") is not None and sum(c_sorted) > f["soma_max"]:
+                continue
+            imp = sum(1 for x in c_sorted if x % 2 != 0)
+            if f.get("min_impares") is not None and imp < f["min_impares"]:
+                continue
+            if f.get("max_impares") is not None and imp > f["max_impares"]:
+                continue
+            max_consec = 1
+            cur = 1
+            for i in range(1, len(c_sorted)):
+                if c_sorted[i] == c_sorted[i-1] + 1:
+                    cur += 1
+                    max_consec = max(max_consec, cur)
+                else:
+                    cur = 1
+            if f.get("max_consecutivos") is not None and max_consec > f["max_consecutivos"]:
+                continue
+            if quadrants and f.get("max_por_quad") is not None:
+                qdist = count_quadrant_distribution(c_sorted, quadrants)
+                if any(v > f["max_por_quad"] for v in qdist.values()):
+                    continue
+            if hot_set and f.get("min_hot") is not None and f["min_hot"] > 0:
+                hot_count = len([n for n in c_sorted if n in hot_set])
+                if hot_count < f["min_hot"]:
+                    continue
+            if cold_set and f.get("excluir_cold") and f["excluir_cold"]:
+                if any(n in cold_set for n in c_sorted):
+                    continue
+            if strong_pairs and f.get("min_pares_fortes") is not None and f["min_pares_fortes"] > 0:
+                top_pairs_set = set()
+                for pair, _ in strong_pairs[:20]:
+                    top_pairs_set.add(tuple(sorted(pair)))
+                pair_hits = 0
+                for combo in itertools.combinations(c_sorted, 2):
+                    if tuple(sorted(combo)) in top_pairs_set:
+                        pair_hits += 1
+                if pair_hits < f["min_pares_fortes"]:
+                    continue
+            result.append(c_sorted)
+        return result
+    if filters.get("soma_ativo"):
+        prev = len(current)
+        current = apply_filter(current, {"soma_min": filters.get("soma_min"), "soma_max": filters.get("soma_max")})
+        reduzidas = prev - len(current)
+        steps.append({
+            "filtro": f"Soma entre {filters.get('soma_min')} e {filters.get('soma_max')}",
+            "restantes": len(current),
+            "reduzidas": reduzidas,
+            "redução_pct": (1 - len(current) / total_original) * 100 if total_original > 0 else 0,
+            "economia": reduzidas * custo_unit,
+        })
+    if filters.get("impares_ativo"):
+        prev = len(current)
+        current = apply_filter(current, {"min_impares": filters.get("min_impares"), "max_impares": filters.get("max_impares")})
+        reduzidas = prev - len(current)
+        steps.append({
+            "filtro": f"Ímpares: {filters.get('min_impares')}–{filters.get('max_impares')}",
+            "restantes": len(current),
+            "reduzidas": reduzidas,
+            "redução_pct": (1 - len(current) / total_original) * 100 if total_original > 0 else 0,
+            "economia": reduzidas * custo_unit,
+        })
+    if filters.get("consec_ativo"):
+        prev = len(current)
+        current = apply_filter(current, {"max_consecutivos": filters.get("max_consecutivos")})
+        reduzidas = prev - len(current)
+        steps.append({
+            "filtro": f"Máx. {filters.get('max_consecutivos')} consecutivos",
+            "restantes": len(current),
+            "reduzidas": reduzidas,
+            "redução_pct": (1 - len(current) / total_original) * 100 if total_original > 0 else 0,
+            "economia": reduzidas * custo_unit,
+        })
+    if filters.get("quad_ativo") and quadrants:
+        prev = len(current)
+        current = apply_filter(current, {"max_por_quad": filters.get("max_por_quad")})
+        reduzidas = prev - len(current)
+        steps.append({
+            "filtro": f"Máx. {filters.get('max_por_quad')} por quadrante",
+            "restantes": len(current),
+            "reduzidas": reduzidas,
+            "redução_pct": (1 - len(current) / total_original) * 100 if total_original > 0 else 0,
+            "economia": reduzidas * custo_unit,
+        })
+    if filters.get("hot_ativo") and hot_set:
+        prev = len(current)
+        current = apply_filter(current, {"min_hot": filters.get("min_hot")})
+        reduzidas = prev - len(current)
+        steps.append({
+            "filtro": f"Mín. {filters.get('min_hot')} hot numbers",
+            "restantes": len(current),
+            "reduzidas": reduzidas,
+            "redução_pct": (1 - len(current) / total_original) * 100 if total_original > 0 else 0,
+            "economia": reduzidas * custo_unit,
+        })
+    if filters.get("cold_ativo") and cold_set:
+        prev = len(current)
+        current = apply_filter(current, {"excluir_cold": True})
+        reduzidas = prev - len(current)
+        steps.append({
+            "filtro": "Excluir cold numbers",
+            "restantes": len(current),
+            "reduzidas": reduzidas,
+            "redução_pct": (1 - len(current) / total_original) * 100 if total_original > 0 else 0,
+            "economia": reduzidas * custo_unit,
+        })
+    if filters.get("pares_ativo") and strong_pairs:
+        prev = len(current)
+        current = apply_filter(current, {"min_pares_fortes": filters.get("min_pares_fortes")})
+        reduzidas = prev - len(current)
+        steps.append({
+            "filtro": f"Mín. {filters.get('min_pares_fortes')} pares fortes",
+            "restantes": len(current),
+            "reduzidas": reduzidas,
+            "redução_pct": (1 - len(current) / total_original) * 100 if total_original > 0 else 0,
+            "economia": reduzidas * custo_unit,
+        })
+    return current, steps
+
 def run_backtest(bets, draws_matrix, lottery_name):
     cfg = LOTTERIES[lottery_name]
     premios = cfg["premios"]
@@ -1131,6 +1267,30 @@ def plot_cycle_completion(cycle, total, theme):
         template="plotly_white", paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
+def plot_reduction_steps(steps, theme):
+    labels = [s["filtro"] for s in steps]
+    restantes = [s["restantes"] for s in steps]
+    reduzidas = [s["reduzidas"] for s in steps]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=labels, y=restantes,
+        marker_color=theme["accent"], name="Restantes",
+        text=restantes, textposition="auto",
+    ))
+    fig.add_trace(go.Bar(
+        x=labels, y=reduzidas,
+        marker_color="#FF6B6B", name="Reduzidas",
+        text=reduzidas, textposition="auto",
+    ))
+    fig.update_layout(
+        title="Redução Progressiva de Combinações",
+        xaxis_title="Filtro aplicado", yaxis_title="Quantidade",
+        template="plotly_white", height=400, barmode="stack",
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]), showlegend=True,
+    )
+    return fig
+
 def render_caixa_export(bets, lottery_name, trevos_bets=None, mes_bets=None, download_key="caixa"):
     cfg = LOTTERIES[lottery_name]
     json_data = export_to_caixa_json(bets, lottery_name, trevos_bets, mes_bets)
@@ -1234,7 +1394,7 @@ def main():
     st.markdown(f"""
     <div class="main-header">
         <div class="main-title">🎲 Motor Analítico & Gerador de Apostas</div>
-        <div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI</div>
+        <div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1273,7 +1433,7 @@ def main():
     st.divider()
 
     tab_gerador, tab_conferidor, tab_fechamento, tab_padroes, tab_backtest, tab_dados = st.tabs([
-        "🎰 Gerador", "✅ Conferidor", "🔢 Fechamento", "📊 Padrões", "🔬 Backtesting", "📋 Dados"
+        "🎰 Gerador", "✅ Conferidor", "🔢 Line Reduction", "📊 Padrões", "🔬 Backtesting", "📋 Dados"
     ])
 
     with tab_gerador:
@@ -1489,85 +1649,107 @@ def main():
             st.info("Clique em **🔄 Buscar último sorteio** para carregar o resultado mais recente da Caixa.")
 
     with tab_fechamento:
-        st.header("🔢 Fechamento Matemático")
-        st.markdown("Gera combinações matemáticas a partir de dezenas escolhidas, com filtros opcionais.")
-        dezenas_input = st.text_area("Digite as dezenas separadas por vírgula (ex: 5, 12, 23, 34, 47, 58)", value="", height=80, key="dezenas_textarea")
-        st.markdown("**Filtros (opcionais):**")
-        usar_filtros = st.checkbox("Ativar filtros", value=False, key="ativar_filtros_checkbox")
-        col_f1, col_f2, col_f3 = st.columns(3)
-        with col_f1:
-            qtd_impares = st.slider("Qtd. ímpares", 0, cfg["dezenas_aposta"], cfg["dezenas_aposta"]//2, key="qtd_impares_slider") if usar_filtros else cfg["dezenas_aposta"]//2
-        with col_f2:
-            soma_min = int(cfg["dezenas_total"]*cfg["dezenas_aposta"]*0.3)
-            soma_max = int(cfg["dezenas_total"]*cfg["dezenas_aposta"]*0.7)
-            soma_intervalo = st.slider("Intervalo da soma", 1, cfg["dezenas_total"]*cfg["dezenas_aposta"], (soma_min, soma_max), key="soma_intervalo_slider") if usar_filtros else (1, cfg["dezenas_total"]*cfg["dezenas_aposta"])
-        with col_f3:
-            max_consec = st.slider("Máx. consecutivos", 1, cfg["dezenas_aposta"], cfg["dezenas_aposta"], key="max_consec_slider") if usar_filtros else cfg["dezenas_aposta"]
-        if st.button("🔢 Gerar Fechamento", type="primary", key="gerar_fechamento_button"):
-            try:
-                dezenas_list = sorted(set(int(x.strip()) for x in dezenas_input.split(",") if x.strip()))
-                pick = cfg["dezenas_aposta"]
-                if len(dezenas_list) < pick:
-                    st.warning(f"Você precisa de pelo menos {pick} dezenas.")
-                else:
-                    total_combinations = list(itertools.combinations(dezenas_list, pick))
-                    filtered = []
-                    for combo in total_combinations:
-                        if usar_filtros:
-                            if sum(1 for x in combo if x%2!=0) != qtd_impares:
-                                continue
-                            if not (soma_intervalo[0] <= sum(combo) <= soma_intervalo[1]):
-                                continue
-                            consec = max_consec_found = 1
-                            for i in range(1, len(combo)):
-                                if combo[i] == combo[i-1]+1:
-                                    consec += 1
-                                    max_consec_found = max(max_consec_found, consec)
-                                else:
-                                    consec = 1
-                            if max_consec_found > max_consec:
-                                continue
-                        filtered.append(sorted(combo))
-                    if not filtered:
-                        st.warning("Nenhuma combinação passou nos filtros.")
-                    else:
-                        st.session_state["fechamento_bets"] = filtered
-                        st.session_state["fechamento_total_original"] = len(total_combinations)
-                        st.session_state["fechamento_total_filtrado"] = len(filtered)
-            except ValueError:
-                st.error("Digite apenas números separados por vírgula.")
-        if "fechamento_bets" in st.session_state and st.session_state["fechamento_bets"]:
-            f_bets = st.session_state["fechamento_bets"]
-            total_orig = st.session_state["fechamento_total_original"]
-            total_filt = st.session_state["fechamento_total_filtrado"]
-            st.subheader(f"{len(f_bets)} Combinações Geradas")
-            col_r1, col_r2, col_r3 = st.columns(3)
-            with col_r1:
-                metric_card("Combinações Originais", total_orig, "Fechamento total")
-            with col_r2:
-                metric_card("Após Filtros", total_filt, "Combinações válidas")
-            with col_r3:
-                reducao = total_orig - total_filt
-                perc = (reducao/total_orig*100) if total_orig > 0 else 0
-                metric_card("Redução", f"{reducao} ({perc:.1f}%)", "Economia de apostas")
-            df_fech = pd.DataFrame(f_bets, columns=[f"d{i+1}" for i in range(cfg["dezenas_aposta"])])
-            df_fech.insert(0, "#", range(1, len(f_bets)+1))
-            st.dataframe(df_fech, use_container_width=True, hide_index=True)
-            freq_local = st.session_state.get("freq", {})
-            delays_local = st.session_state.get("delays", {})
-            strong_pairs_local = st.session_state.get("strong_pairs", [])
-            excel_fech = export_to_excel(f_bets, freq_local, delays_local, strong_pairs_local, lottery_name)
-            st.download_button(
-                label="📊 Baixar Fechamento em Excel",
-                data=excel_fech,
-                file_name=f"fechamento_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_excel_fechamento",
+        st.header("🔢 Line Reduction Interativo")
+        st.markdown("Aplica filtros **progressivamente** e vê a redução em tempo real a cada filtro.")
+        dezenas_input = st.text_area("Digite as dezenas separadas por vírgula (ex: 5, 12, 23, 34, 47, 58)", value="", height=80, key="dezenas_textarea_lr")
+        pick = cfg["dezenas_aposta"]
+        custo_unit = cfg.get("custo_aposta", 5.0)
+        try:
+            dezenas_list = sorted(set(int(x.strip()) for x in dezenas_input.split(",") if x.strip()))
+        except ValueError:
+            dezenas_list = []
+        if len(dezenas_list) < pick:
+            st.info(f"Digite pelo menos **{pick}** dezenas para iniciar o fechamento.")
+        else:
+            all_combos = list(itertools.combinations(dezenas_list, pick))
+            total_orig = len(all_combos)
+            st.markdown(f"### 📊 {total_orig:,} combinações possíveis com {len(dezenas_list)} dezenas")
+            st.markdown(f"**Custo total sem filtros:** R$ {total_orig * custo_unit:,.2f}")
+            st.divider()
+            st.markdown("#### 🔧 Filtros Progressivos")
+            filters = {}
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                filters["soma_ativo"] = st.checkbox("Filtro de Soma", value=False, key="lr_soma_check")
+                if filters["soma_ativo"]:
+                    soma_min_def = int(np.mean(dezenas_list) * pick * 0.7)
+                    soma_max_def = int(np.mean(dezenas_list) * pick * 1.3)
+                    filters["soma_min"] = st.number_input("Soma mínima", value=soma_min_def, key="lr_soma_min")
+                    filters["soma_max"] = st.number_input("Soma máxima", value=soma_max_def, key="lr_soma_max")
+                filters["impares_ativo"] = st.checkbox("Filtro de Ímpar/Par", value=False, key="lr_impares_check")
+                if filters["impares_ativo"]:
+                    filters["min_impares"] = st.number_input("Mín. ímpares", 0, pick, pick // 2, key="lr_min_imp")
+                    filters["max_impares"] = st.number_input("Máx. ímpares", 0, pick, pick - 1, key="lr_max_imp")
+                filters["consec_ativo"] = st.checkbox("Máx. Consecutivos", value=False, key="lr_consec_check")
+                if filters["consec_ativo"]:
+                    filters["max_consecutivos"] = st.slider("Máx. consecutivos", 1, pick, 2, key="lr_max_consec")
+                filters["quad_ativo"] = st.checkbox("Máx. por Quadrante", value=False, key="lr_quad_check")
+                if filters["quad_ativo"]:
+                    filters["max_por_quad"] = st.slider("Máx. por quadrante", 1, pick, pick // 2, key="lr_max_quad")
+            with col_f2:
+                filters["hot_ativo"] = st.checkbox("Mín. Hot Numbers", value=False, key="lr_hot_check")
+                if filters["hot_ativo"]:
+                    filters["min_hot"] = st.slider("Mín. hot numbers", 0, pick, 2, key="lr_min_hot")
+                filters["cold_ativo"] = st.checkbox("Excluir Cold Numbers", value=False, key="lr_cold_check")
+                filters["pares_ativo"] = st.checkbox("Mín. Pares Fortes", value=False, key="lr_pares_check")
+                if filters["pares_ativo"]:
+                    filters["min_pares_fortes"] = st.slider("Mín. pares fortes", 0, 10, 2, key="lr_min_pares")
+            quadrants_lr = compute_quadrants(cfg["dezenas_total"], 4)
+            strong_pairs_lr = st.session_state.get("strong_pairs", [])
+            filtered_combos, steps = apply_progressive_filters(
+                all_combos, filters,
+                freq=st.session_state.get("freq", {}),
+                delays=st.session_state.get("delays", {}),
+                strong_pairs=strong_pairs_lr,
+                hot_set=hot_cold_data["hot_set"],
+                cold_set=hot_cold_data["cold_set"],
+                quadrants=quadrants_lr,
+                custo_unit=custo_unit,
             )
             st.divider()
-            render_caixa_export(f_bets, lottery_name, download_key="fechamento")
-        else:
-            st.info("Digite suas dezenas acima e clique em **🔢 Gerar Fechamento**.")
+            final_count = len(filtered_combos)
+            economia_total = (total_orig - final_count) * custo_unit
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            with col_m1:
+                metric_card("Combinações Iniciais", f"{total_orig:,}", "Sem filtros")
+            with col_m2:
+                metric_card("Após Filtros", f"{final_count:,}", f"{(1 - final_count/total_orig)*100:.1f}% reduzido" if total_orig > 0 else "")
+            with col_m3:
+                metric_card("Reduzidas", f"{total_orig - final_count:,}", "Combinações eliminadas")
+            with col_m4:
+                metric_card("Economia", f"R$ {economia_total:,.2f}", "Em apostas não feitas")
+            if len(steps) > 1:
+                st.plotly_chart(plot_reduction_steps(steps, theme), use_container_width=True)
+                st.markdown("##### 📋 Detalhe por Filtro")
+                df_steps = pd.DataFrame([
+                    {"Filtro": s["filtro"], "Restantes": s["restantes"], "Reduzidas": s["reduzidas"],
+                     "Redução %": f"{s['redução_pct']:.1f}%", "Economia": f"R$ {s['economia']:,.2f}"}
+                    for s in steps
+                ])
+                st.dataframe(df_steps, use_container_width=True, hide_index=True)
+            if final_count > 0:
+                st.divider()
+                st.markdown(f"#### ✅ {final_count:,} Combinações Finais")
+                if final_count <= 500:
+                    df_final = pd.DataFrame(filtered_combos, columns=[f"d{i+1}" for i in range(pick)])
+                    df_final.insert(0, "#", range(1, len(df_final) + 1))
+                    st.dataframe(df_final, use_container_width=True, hide_index=True)
+                else:
+                    st.warning(f"Muitas combinações ({final_count:,}) para exibir. Use mais filtros ou baixe o Excel.")
+                freq_local = st.session_state.get("freq", {})
+                delays_local = st.session_state.get("delays", {})
+                excel_lr = export_to_excel(filtered_combos, freq_local, delays_local, strong_pairs_lr, lottery_name)
+                st.download_button(
+                    label="📊 Baixar Excel",
+                    data=excel_lr,
+                    file_name=f"line_reduction_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_excel_lr",
+                )
+                st.divider()
+                render_caixa_export(filtered_combos, lottery_name, download_key="line_reduction")
+            else:
+                st.error("Nenhuma combinação passou nos filtros. Tente relaxar os critérios.")
 
     with tab_padroes:
         st.header("📊 Padrões Comportamentais")
@@ -1769,7 +1951,7 @@ def main():
     st.divider()
     st.markdown(
         f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>"
-        f"Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · "
+        f"Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · "
         f"{datetime.now().year} · Jogue com responsabilidade.</div>",
         unsafe_allow_html=True
     )
