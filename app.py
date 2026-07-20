@@ -9,6 +9,9 @@ import random
 import time
 import json
 import requests
+import base64
+import urllib.parse
+from fpdf import FPDF
 from io import BytesIO
 from collections import Counter
 from datetime import datetime, timedelta
@@ -71,6 +74,9 @@ THEME_COLORS = {
 
 API_BASE = "https://servicebus2.caixa.gov.br/portaldeloterias/api"
 
+# ============================================================
+# API CAIXA
+# ============================================================
 def fetch_caixa_latest(lottery_name):
     cfg = LOTTERIES[lottery_name]
     url = f"{API_BASE}/{cfg['api_slug']}"
@@ -166,6 +172,9 @@ def fetch_caixa_history(lottery_name, n_concursos=50):
         time.sleep(0.15)
     return pd.DataFrame(rows) if rows else None
 
+# ============================================================
+# UTILITÁRIOS
+# ============================================================
 def is_prime(n):
     if n < 2:
         return False
@@ -221,6 +230,98 @@ def metric_card(label, value, sub=""):
     </div>
     """, unsafe_allow_html=True)
 
+# ============================================================
+# COMPLIANCE / LGPD / PWA
+# ============================================================
+def inject_pwa_config():
+    manifest = {
+        "name": "Motor Analitico de Loterias",
+        "short_name": "LotoAnalise",
+        "description": "Analise estatistica avancada e gerador de apostas para loterias da Caixa",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#0A1628",
+        "theme_color": "#1E90FF",
+        "icons": [
+            {
+                "src": "data:image/svg+xml;base64," + base64.b64encode(
+                    b'<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">'
+                    b'<rect width="192" height="192" rx="32" fill="#1E90FF"/>'
+                    b'<text x="96" y="120" font-size="100" text-anchor="middle" fill="white">D</text>'
+                    b'</svg>'
+                ).decode(),
+                "sizes": "192x192",
+                "type": "image/svg+xml",
+            }
+        ],
+    }
+    manifest_json = json.dumps(manifest)
+    st.markdown(f"""
+    <script>
+    var manifestBlob = new Blob(['{manifest_json}'], {{type: 'application/json'}});
+    var manifestURL = URL.createObjectURL(manifestBlob);
+    var link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = manifestURL;
+    document.head.appendChild(link);
+    var meta1 = document.createElement('meta');
+    meta1.name = 'apple-mobile-web-app-capable';
+    meta1.content = 'yes';
+    document.head.appendChild(meta1);
+    var meta2 = document.createElement('meta');
+    meta2.name = 'apple-mobile-web-app-status-bar-style';
+    meta2.content = 'black-translucent';
+    document.head.appendChild(meta2);
+    var meta3 = document.createElement('meta');
+    meta3.name = 'apple-mobile-web-app-title';
+    meta3.content = 'LotoAnalise';
+    document.head.appendChild(meta3);
+    var meta4 = document.createElement('meta');
+    meta4.name = 'mobile-web-app-capable';
+    meta4.content = 'yes';
+    document.head.appendChild(meta4);
+    var meta5 = document.createElement('meta');
+    meta5.name = 'theme-color';
+    meta5.content = '#1E90FF';
+    document.head.appendChild(meta5);
+    </script>
+    """, unsafe_allow_html=True)
+
+def render_compliance_banner(theme):
+    st.markdown(f"""
+    <div style='background:{theme['card']};border:1px solid #ffc107;border-radius:10px;padding:14px 18px;margin:12px 0;'>
+        <div style='display:flex;align-items:flex-start;gap:10px;'>
+            <span style='font-size:1.3rem;'>⚠️</span>
+            <div>
+                <div style='font-weight:700;color:#856404;font-size:0.9rem;margin-bottom:4px;'>Jogo Responsavel</div>
+                <div style='font-size:0.8rem;color:{theme['text']};opacity:0.8;line-height:1.4;'>
+                    Este software <b>nao aumenta suas chances reais de ganhar</b>. Loteria e um jogo de azar.
+                    Os modelos estatisticos servem apenas para analise e educacao. Jogue com moderacao.
+                    Se voce ou alguem que voce conhece precisa de ajuda, ligue <b>188</b> (CVV) - gratuito e confidencial.
+                </div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_lgpd_consent():
+    if "lgpd_accepted" not in st.session_state:
+        st.session_state["lgpd_accepted"] = False
+    if not st.session_state["lgpd_accepted"]:
+        st.markdown("""
+        <div style='position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;color:white;padding:16px 24px;z-index:9999;display:flex;align-items:center;justify-content:space-between;gap:20px;'>
+            <div style='font-size:0.85rem;flex:1;'>
+                Usamos cookies essenciais para funcionamento do app. Nenhum dado pessoal e coletado sem seu consentimento (LGPD - Lei 13.709/2018).
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("Aceitar LGPD", key="lgpd_accept_btn"):
+            st.session_state["lgpd_accepted"] = True
+            st.rerun()
+
+# ============================================================
+# DADOS MOCKADOS
+# ============================================================
 @st.cache_data(show_spinner=False)
 def generate_mock_data(lottery_name, n_draws=300):
     cfg = LOTTERIES[lottery_name]
@@ -242,6 +343,9 @@ def generate_mock_data(lottery_name, n_draws=300):
         rows.append(row)
     return pd.DataFrame(rows)
 
+# ============================================================
+# INGESTÃO DE DADOS
+# ============================================================
 def infer_dezena_columns(df):
     candidates = [c for c in df.columns if str(c).lower().startswith("d") or str(c).lower().startswith("bola")]
     numeric_candidates = []
@@ -347,6 +451,9 @@ def get_meses_series(df, lottery_name):
         return None
     return pd.to_numeric(df["mes"], errors="coerce").dropna()
 
+# ============================================================
+# ANÁLISES ESTATÍSTICAS
+# ============================================================
 @st.cache_data(show_spinner=False)
 def compute_frequency(draws_matrix, total_numbers):
     flat = draws_matrix.flatten()
@@ -631,6 +738,9 @@ def compute_alerts(total_numbers, gap_data, cycle):
         })
     return alerts
 
+# ============================================================
+# GERADOR DE APOSTAS
+# ============================================================
 def is_bet_valid(bet, patterns, lottery_name, quadrants):
     pick = len(bet)
     impares = sum(1 for x in bet if x % 2 != 0)
@@ -815,6 +925,9 @@ def bets_are_unique(new_bets, old_bets):
     old_set = {tuple(b) for b in old_bets}
     return all(tuple(b) not in old_set for b in new_bets)
 
+# ============================================================
+# LINE REDUCTION
+# ============================================================
 def apply_progressive_filters(combinations, filters, freq=None, delays=None, strong_pairs=None, hot_set=None, cold_set=None, quadrants=None, custo_unit=5.0):
     steps = []
     current = list(combinations)
@@ -951,6 +1064,9 @@ def apply_progressive_filters(combinations, filters, freq=None, delays=None, str
         })
     return current, steps
 
+# ============================================================
+# BACKTESTING
+# ============================================================
 def run_backtest(bets, draws_matrix, lottery_name):
     cfg = LOTTERIES[lottery_name]
     premios = cfg["premios"]
@@ -1016,6 +1132,9 @@ def compare_strategies(lottery_name, draws_matrix, n_bets=10, weight_freq=0.4, w
         })
     return pd.DataFrame(comparison)
 
+# ============================================================
+# CONFERIDOR
+# ============================================================
 def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_bets=None, trevos_sort=None, mes_sort=None):
     cfg = LOTTERIES[lottery_name]
     premios = cfg["premios"]
@@ -1045,6 +1164,9 @@ def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_b
         })
     return pd.DataFrame(resultados)
 
+# ============================================================
+# EXPORTAÇÃO
+# ============================================================
 def export_to_excel(bets, freq, delays, strong_pairs, lottery_name, trevos_bets=None, mes_bets=None, scores_list=None):
     cfg = LOTTERIES[lottery_name]
     total = cfg["dezenas_total"]
@@ -1097,6 +1219,109 @@ def export_to_caixa_json(bets, lottery_name, trevos_bets=None, mes_bets=None):
         data["tem_mes"] = True
     return data
 
+def export_to_pdf(bets, lottery_name, scores_list=None, trevos_bets=None, mes_bets=None):
+    cfg = LOTTERIES[lottery_name]
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_fill_color(30, 144, 255)
+    pdf.rect(0, 0, 210, 25, "F")
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 15, f"Motor Analitico - {lottery_name}", ln=True, align="C")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(0, 5, f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=True, align="C")
+    pdf.ln(8)
+    pdf.set_text_color(30, 58, 95)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, f"{len(bets)} Apostas Geradas", ln=True)
+    pdf.ln(3)
+    pick = cfg["dezenas_aposta"]
+    for i, bet in enumerate(bets):
+        y_start = pdf.get_y()
+        if y_start > 270:
+            pdf.add_page()
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(30, 58, 95)
+        score_str = f"  | Score: {scores_list[i]}" if scores_list else ""
+        pdf.cell(0, 7, f"Aposta {i+1}{score_str}", ln=True)
+        x = 15
+        y = pdf.get_y() + 2
+        for n in bet:
+            pdf.set_fill_color(30, 144, 255)
+            pdf.set_text_color(255, 255, 255)
+            pdf.ellipse(x, y, 10, 10, "F")
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.text(x + 1.5, y + 6.5, f"{n:02d}")
+            x += 13
+            if x > 180:
+                x = 15
+                y += 13
+        if trevos_bets:
+            pdf.set_text_color(255, 140, 0)
+            pdf.set_font("Helvetica", "B", 9)
+            trevos_str = "  ".join(f"T{t}" for t in trevos_bets[i])
+            pdf.text(x + 2, y + 6.5, f"Trevos: {trevos_str}")
+        if mes_bets:
+            mes_nome = cfg["meses_lista"][mes_bets[i] - 1]
+            pdf.set_text_color(255, 105, 180)
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.text(x + 2, y + 6.5, f"  Mes: {mes_nome}")
+        pdf.ln(16)
+    pdf.ln(5)
+    pdf.set_text_color(150, 150, 150)
+    pdf.set_font("Helvetica", "I", 7)
+    pdf.multi_cell(0, 4, "AVISO: Este software nao aumenta suas chances reais de ganhar. Loteria e um jogo de azar. Jogue com responsabilidade. Se precisar de ajuda, ligue 188 (CVV).")
+    output = BytesIO()
+    pdf_output = pdf.output(dest="S")
+    if isinstance(pdf_output, str):
+        output.write(pdf_output.encode("latin-1"))
+    else:
+        output.write(pdf_output)
+    output.seek(0)
+    return output
+
+def whatsapp_share_url(bets, lottery_name, scores_list=None):
+    lines = [f"*Motor Analitico - {lottery_name}*"]
+    lines.append(f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    lines.append("")
+    for i, bet in enumerate(bets[:5]):
+        dezenas = " - ".join(f"{n:02d}" for n in bet)
+        score = f" (Score: {scores_list[i]})" if scores_list else ""
+        lines.append(f"*Aposta {i+1}*{score}: {dezenas}")
+    if len(bets) > 5:
+        lines.append(f"... e mais {len(bets) - 5} apostas")
+    lines.append("")
+    lines.append("_Jogue com responsabilidade. Ligue 188 (CVV)._")
+    text = "\n".join(lines)
+    return f"https://wa.me/?text={urllib.parse.quote(text)}"
+
+def render_caixa_export(bets, lottery_name, trevos_bets=None, mes_bets=None, download_key="caixa"):
+    cfg = LOTTERIES[lottery_name]
+    json_data = export_to_caixa_json(bets, lottery_name, trevos_bets, mes_bets)
+    json_str = json.dumps(json_data, ensure_ascii=False, indent=2)
+    st.markdown("#### 🛒 Exportação para Carrinho da Caixa")
+    st.download_button(
+        label="📥 Baixar JSON (formato Caixa)",
+        data=json_str.encode("utf-8"),
+        file_name=f"apostas_caixa_{lottery_name.lower().replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+        mime="application/json",
+        key=f"download_json_{download_key}",
+    )
+    st.markdown("##### 📋 Carrinho de Apostas")
+    carrinho_rows = []
+    for i, bet in enumerate(bets):
+        row = {"#": i + 1, "Dezenas": " - ".join(f"{n:02d}" for n in bet)}
+        if trevos_bets:
+            row["Trevos"] = " - ".join(f"🍀{t}" for t in trevos_bets[i])
+        if mes_bets:
+            row["Mês"] = cfg["meses_lista"][mes_bets[i] - 1]
+        carrinho_rows.append(row)
+    st.dataframe(pd.DataFrame(carrinho_rows), use_container_width=True, hide_index=True)
+
+# ============================================================
+# GRÁFICOS PLOTLY
+# ============================================================
 def plot_frequency_bar(freq, total, theme):
     nums = list(range(1, total + 1))
     vals = [freq.get(n, 0) for n in nums]
@@ -1360,33 +1585,14 @@ def plot_reduction_steps(steps, theme):
     )
     return fig
 
-def render_caixa_export(bets, lottery_name, trevos_bets=None, mes_bets=None, download_key="caixa"):
-    cfg = LOTTERIES[lottery_name]
-    json_data = export_to_caixa_json(bets, lottery_name, trevos_bets, mes_bets)
-    json_str = json.dumps(json_data, ensure_ascii=False, indent=2)
-    st.markdown("#### 🛒 Exportação para Carrinho da Caixa")
-    st.download_button(
-        label="📥 Baixar JSON (formato Caixa)",
-        data=json_str.encode("utf-8"),
-        file_name=f"apostas_caixa_{lottery_name.lower().replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-        mime="application/json",
-        key=f"download_json_{download_key}",
-    )
-    st.markdown("##### 📋 Carrinho de Apostas")
-    carrinho_rows = []
-    for i, bet in enumerate(bets):
-        row = {"#": i + 1, "Dezenas": " - ".join(f"{n:02d}" for n in bet)}
-        if trevos_bets:
-            row["Trevos"] = " - ".join(f"🍀{t}" for t in trevos_bets[i])
-        if mes_bets:
-            row["Mês"] = cfg["meses_lista"][mes_bets[i] - 1]
-        carrinho_rows.append(row)
-    st.dataframe(pd.DataFrame(carrinho_rows), use_container_width=True, hide_index=True)
-
+# ============================================================
+# APP PRINCIPAL
+# ============================================================
 def main():
     st.set_page_config(page_title="Motor Analítico de Loterias", page_icon="🎲", layout="wide")
     apply_theme_css()
     theme = get_theme()
+    inject_pwa_config()
     if "gen_counter" not in st.session_state:
         st.session_state["gen_counter"] = 0
 
@@ -1463,11 +1669,12 @@ def main():
     st.markdown(f"""
     <div class="main-header">
         <div class="main-title">🎲 Motor Analítico & Gerador de Apostas</div>
-        <div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov</div>
+        <div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ===== ALERTAS =====
+    render_compliance_banner(theme)
+
     if alerts:
         alert_colors = {"alta": "#dc3545", "media": "#ffc107"}
         for a in alerts:
@@ -1632,6 +1839,24 @@ def main():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="download_excel_apostas",
             )
+            st.markdown("##### 📱 Compartilhar")
+            col_sh1, col_sh2 = st.columns(2)
+            with col_sh1:
+                pdf_data = export_to_pdf(bets, lottery_name, scores_list, trevos_bets, mes_bets)
+                st.download_button(
+                    label="📄 Baixar PDF do Volante",
+                    data=pdf_data,
+                    file_name=f"volante_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                    mime="application/pdf",
+                    key="download_pdf_apostas",
+                )
+            with col_sh2:
+                wa_url = whatsapp_share_url(bets, lottery_name, scores_list)
+                st.markdown(f"""
+                <a href="{wa_url}" target="_blank" style='display:inline-block;padding:8px 16px;background:#25D366;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:0.85rem;'>
+                💬 Compartilhar no WhatsApp
+                </a>
+                """, unsafe_allow_html=True)
             st.divider()
             render_caixa_export(bets, lottery_name, trevos_bets, mes_bets, download_key="gerador")
         else:
@@ -1815,6 +2040,20 @@ def main():
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="download_excel_lr",
                 )
+                pdf_lr = export_to_pdf(filtered_combos, lottery_name)
+                st.download_button(
+                    label="📄 Baixar PDF",
+                    data=pdf_lr,
+                    file_name=f"fechamento_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                    mime="application/pdf",
+                    key="download_pdf_lr",
+                )
+                wa_url_lr = whatsapp_share_url(filtered_combos, lottery_name)
+                st.markdown(f"""
+                <a href="{wa_url_lr}" target="_blank" style='display:inline-block;padding:8px 16px;background:#25D366;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:0.85rem;margin-top:8px;'>
+                💬 Compartilhar no WhatsApp
+                </a>
+                """, unsafe_allow_html=True)
                 st.divider()
                 render_caixa_export(filtered_combos, lottery_name, download_key="line_reduction")
             else:
@@ -2036,10 +2275,12 @@ def main():
     st.divider()
     st.markdown(
         f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>"
-        f"Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · "
-        f"{datetime.now().year} · Jogue com responsabilidade.</div>",
+        f"Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA · PDF · WhatsApp · "
+        f"{datetime.now().year} · Jogue com responsabilidade · Ligue 188 (CVV).</div>",
         unsafe_allow_html=True
     )
+
+    render_lgpd_consent()
 
 if __name__ == "__main__":
     main()
