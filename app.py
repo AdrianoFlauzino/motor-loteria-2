@@ -425,6 +425,33 @@ def compute_gap_analysis(draws_matrix, total_numbers):
     return gaps
 
 @st.cache_data(show_spinner=False)
+def compute_markov_chain(draws_matrix, total_numbers):
+    n_draws = len(draws_matrix)
+    if n_draws < 2:
+        return None
+    trans = np.zeros((total_numbers + 1, total_numbers + 1))
+    for i in range(n_draws - 1):
+        current = set(int(x) for x in draws_matrix[i])
+        nxt = set(int(x) for x in draws_matrix[i + 1])
+        for x in current:
+            for y in nxt:
+                trans[x][y] += 1
+    row_sums = trans.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1
+    prob = trans / row_sums
+    last_draw = set(int(x) for x in draws_matrix[-1])
+    next_probs = np.zeros(total_numbers + 1)
+    for x in last_draw:
+        next_probs += prob[x]
+    next_probs /= max(1, len(last_draw))
+    return {
+        "transition_matrix": prob,
+        "next_probs": {n: round(float(next_probs[n]) * 100, 2) for n in range(1, total_numbers + 1)},
+        "last_draw": sorted(last_draw),
+        "n_transitions": int(trans.sum()),
+    }
+
+@st.cache_data(show_spinner=False)
 def compute_delays(draws_matrix, total_numbers):
     n_draws = len(draws_matrix)
     draw_sets = [set(row.tolist()) for row in draws_matrix]
@@ -664,6 +691,7 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
     quadrants = compute_quadrants(total, 4)
     cycle = compute_cycle_completion(draws_matrix, total)
     gap_data = compute_gap_analysis(draws_matrix, total)
+    markov_data = compute_markov_chain(draws_matrix, total)
     max_freq = max(freq.values()) if max(freq.values()) > 0 else 1
     max_freq_w = max(freq_weighted.values()) if max(freq_weighted.values()) > 0 else 1
     max_delay = max(delays.values()) if max(delays.values()) > 0 else 1
@@ -683,6 +711,10 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
             scores[num] *= 1.15
         if gap_data[num]["overdue"]:
             scores[num] *= 1.20
+        if markov_data and markov_data["next_probs"].get(num, 0) > 0:
+            mk_prob = markov_data["next_probs"][num] / 100.0
+            if mk_prob > 0.3:
+                scores[num] *= 1.10
     for num in pair_score_map:
         scores[num] += weight_pairs * (pair_score_map[num] / max_pair)
     seed_base = int(time.time() * 1000) % (2**32)
@@ -1186,6 +1218,43 @@ def plot_prob_ranking(gap_data, total, theme):
     )
     return fig
 
+def plot_markov_heatmap(markov_data, total, theme):
+    matrix = markov_data["transition_matrix"][1:total+1, 1:total+1]
+    fig = go.Figure(data=go.Heatmap(
+        z=matrix,
+        x=list(range(1, total + 1)),
+        y=list(range(1, total + 1)),
+        colorscale="Blues",
+        colorbar=dict(title="P(Y|X)"),
+    ))
+    fig.update_layout(
+        title="Heatmap da Matriz de Transição de Markov P[Y aparecer | X apareceu antes]",
+        xaxis_title="Dezena Y (próximo sorteio)", yaxis_title="Dezena X (sorteio anterior)",
+        template="plotly_white", height=500,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
+def plot_markov_ranking(markov_data, total, theme):
+    probs = markov_data["next_probs"]
+    sorted_items = sorted(probs.items(), key=lambda x: x[1], reverse=True)
+    nums = [str(n) for n, _ in sorted_items[:30]]
+    vals = [v for _, v in sorted_items[:30]]
+    fig = go.Figure(data=[go.Bar(
+        x=nums, y=vals,
+        marker_color=theme["accent"], text=[f"{v}%" for v in vals],
+        textposition="auto",
+    )])
+    fig.update_layout(
+        title="Top 30 Dezenas por Probabilidade de Markov (baseado no último sorteio)",
+        xaxis_title="Dezena", yaxis_title="Probabilidade (%)",
+        template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
 def plot_delays_bar(delays, total, theme, title_suffix=""):
     nums = list(range(1, total + 1))
     vals = [delays.get(n, 0) for n in nums]
@@ -1394,11 +1463,11 @@ def main():
     st.markdown(f"""
     <div class="main-header">
         <div class="main-title">🎲 Motor Analítico & Gerador de Apostas</div>
-        <div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction</div>
+        <div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ===== ALERTAS (renderização individual, sem wrapper div) =====
+    # ===== ALERTAS =====
     if alerts:
         alert_colors = {"alta": "#dc3545", "media": "#ffc107"}
         for a in alerts:
@@ -1438,7 +1507,7 @@ def main():
 
     with tab_gerador:
         st.header("🎰 Gerador de Apostas Otimizado")
-        st.markdown("Combina **frequência ponderada**, **atraso**, **pares fortes**, **quadrantes**, **score**, **ciclo**, **hot/cold** e **gap analysis**.")
+        st.markdown("Combina **frequência ponderada**, **atraso**, **pares fortes**, **quadrantes**, **score**, **ciclo**, **hot/cold**, **gap analysis** e **Markov**.")
         if st.session_state["gen_counter"] > 0:
             st.caption(f"🔄 Geração #{st.session_state['gen_counter']}")
         if st.button("⚡ Gerar Apostas", type="primary", key="gerar_apostas_button"):
@@ -1819,6 +1888,22 @@ def main():
         st.plotly_chart(plot_gap_timeline(gap_data, selected_num, len(draws_matrix), theme), use_container_width=True)
         g_sel = gap_data[selected_num]
         st.caption(f"Dezena {selected_num}: média a cada {g_sel['mean_gap']:.1f} concursos | gap atual: {g_sel['current_gap']} | z-score: {g_sel['z_score']} | prob: {g_sel['prob_next']}%")
+        st.divider()
+        st.subheader("🔗 Modelo de Markov (Cadeia de Transição)")
+        markov_data = compute_markov_chain(draws_matrix, cfg["dezenas_total"])
+        if markov_data:
+            st.markdown(f"**Último sorteio analisado:** {', '.join(str(n) for n in markov_data['last_draw'])}")
+            st.caption(f"Baseado em {markov_data['n_transitions']:,} transições entre sorteios consecutivos.")
+            col_mk1, col_mk2 = st.columns([2, 1])
+            with col_mk1:
+                st.plotly_chart(plot_markov_heatmap(markov_data, cfg["dezenas_total"], theme), use_container_width=True)
+            with col_mk2:
+                st.markdown("##### 🎯 Top 15 por Markov")
+                top_mk = sorted(markov_data["next_probs"].items(), key=lambda x: x[1], reverse=True)[:15]
+                df_mk = pd.DataFrame(top_mk, columns=["Dezena", "Prob %"])
+                st.dataframe(df_mk, use_container_width=True, hide_index=True)
+                st.caption("Dezenas com P > 30% recebem +10% no score do gerador.")
+            st.plotly_chart(plot_markov_ranking(markov_data, cfg["dezenas_total"], theme), use_container_width=True)
 
     with tab_backtest:
         st.header("🔬 Backtesting & Análise de ROI")
@@ -1951,7 +2036,7 @@ def main():
     st.divider()
     st.markdown(
         f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>"
-        f"Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · "
+        f"Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · "
         f"{datetime.now().year} · Jogue com responsabilidade.</div>",
         unsafe_allow_html=True
     )
