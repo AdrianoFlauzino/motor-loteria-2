@@ -6,3 +6,4 @@ requests
 xlsxwriter
 openpyxl
 scikit-learn
+fpdf2
