@@ -16,6 +16,15 @@ from collections import Counter
 from datetime import datetime, timedelta
 
 try:
+    from math import comb
+except ImportError:
+    from math import factorial
+    def comb(n, k):
+        if k < 0 or k > n:
+            return 0
+        return factorial(n) // (factorial(k) * factorial(n - k))
+
+try:
     import xlsxwriter
 except ImportError:
     xlsxwriter = None
@@ -1189,6 +1198,78 @@ def apply_progressive_filters(combinations, filters, freq=None, delays=None, str
             steps.append({"filtro": label_fn(filters), "restantes": len(current), "reduzidas": reduzidas, "redução_pct": (1 - len(current) / total_original) * 100 if total_original > 0 else 0, "economia": reduzidas * custo_unit})
     return current, steps
 
+def calculate_coverage_table(n_numbers, pick, premios):
+    coverage = []
+    for j in range(pick, n_numbers + 1):
+        row = {"acertadas": j}
+        total_bets = 0
+        for t in range(pick, max(0, j - (n_numbers - pick)) - 1, -1):
+            if t > j or t > pick:
+                continue
+            count = comb(j, t) * comb(n_numbers - j, pick - t)
+            label = premios.get(t, f"{t} acertos")
+            row[f"{t}_count"] = count
+            row[f"{t}_label"] = label
+            total_bets += count
+        row["total_bets"] = total_bets
+        coverage.append(row)
+    return coverage
+
+def calculate_desdobramento_cost(n_numbers, pick, custo_unit):
+    total_bets = comb(n_numbers, pick)
+    return total_bets, total_bets * custo_unit
+
+def generate_full_desdobramento(numbers, pick):
+    return [sorted(combo) for combo in itertools.combinations(sorted(numbers), pick)]
+
+def plot_coverage_chart(coverage_data, pick, premios, theme):
+    acertadas = [r["acertadas"] for r in coverage_data]
+    fig = go.Figure()
+    prize_levels = sorted([t for t in premios.keys()], reverse=True)
+    colors = ["#FFD700", "#28a745", "#17a2b8", "#6c757d"]
+    for idx, t in enumerate(prize_levels):
+        vals = [r.get(f"{t}_count", 0) for r in coverage_data]
+        if any(v > 0 for v in vals):
+            fig.add_trace(go.Bar(
+                x=acertadas, y=vals,
+                name=premios[t],
+                marker_color=colors[idx % len(colors)],
+                text=vals, textposition="auto",
+            ))
+    fig.update_layout(
+        title="Garantia de Prêmios por Número de Acertos",
+        xaxis_title="Se X de suas dezenas forem sorteadas",
+        yaxis_title="Quantidade de apostas premiadas",
+        template="plotly_white", height=400, barmode="group",
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
+def plot_cost_vs_numbers(cfg, theme):
+    pick = cfg["dezenas_aposta"]
+    custo_unit = cfg.get("custo_aposta", 5.0)
+    max_nums = min(cfg["dezenas_total"], pick + 10)
+    nums = list(range(pick, max_nums + 1))
+    costs = [comb(n, pick) * custo_unit for n in nums]
+    bets = [comb(n, pick) for n in nums]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=[f"{n} dezenas" for n in nums], y=costs,
+        marker_color=theme["accent"],
+        text=[f"R$ {c:,.2f}\n({b} apostas)" for c, b in zip(costs, bets)],
+        textposition="auto",
+    ))
+    fig.update_layout(
+        title=f"Custo Total do Desdobramento — {cfg['dezenas_aposta']}+ dezenas",
+        xaxis_title="Número de dezenas jogadas",
+        yaxis_title="Custo total (R$)",
+        template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
 def run_backtest(bets, draws_matrix, lottery_name):
     cfg = LOTTERIES[lottery_name]
     premios = cfg["premios"]
@@ -1631,7 +1712,7 @@ def main():
     st.markdown(f"""
     <div class="main-header">
         <div class="main-title">🎲 Motor Analítico & Gerador de Apostas</div>
-        <div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA · IA</div>
+        <div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA · IA · Desdobramento</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1665,8 +1746,8 @@ def main():
 
     st.divider()
 
-    tab_gerador, tab_conferidor, tab_fechamento, tab_padroes, tab_backtest, tab_dados, tab_assistente = st.tabs([
-        "🎰 Gerador", "✅ Conferidor", "🔢 Line Reduction", "📊 Padrões", "🔬 Backtesting", "📋 Dados", "🤖 Assistente IA"
+    tab_gerador, tab_conferidor, tab_fechamento, tab_multipla, tab_padroes, tab_backtest, tab_dados, tab_assistente = st.tabs([
+        "🎰 Gerador", "✅ Conferidor", "🔢 Line Reduction", "🎲 Apostas Múltiplas", "📊 Padrões", "🔬 Backtesting", "📋 Dados", "🤖 Assistente IA"
     ])
 
     with tab_gerador:
@@ -1950,6 +2031,160 @@ def main():
             else:
                 st.error("Nenhuma combinação passou nos filtros. Tente relaxar os critérios.")
 
+    with tab_multipla:
+        st.header("🎲 Apostas Múltiplas (Desdobramento)")
+        st.markdown("Jogue com **mais dezenas** e veja o custo total, garantia de prêmios e cobertura completa.")
+        pick = cfg["dezenas_aposta"]
+        custo_unit = cfg.get("custo_aposta", 5.0)
+        max_nums = min(cfg["dezenas_total"], pick + 10)
+        st.markdown("---")
+        st.subheader("📊 Tabela de Custos por Quantidade de Dezenas")
+        st.plotly_chart(plot_cost_vs_numbers(cfg, theme), use_container_width=True)
+        cost_rows = []
+        for n in range(pick, max_nums + 1):
+            total_bets, total_cost = calculate_desdobramento_cost(n, pick, custo_unit)
+            cost_rows.append({"Dezenas": n, "Apostas": f"{total_bets:,}", "Custo Unit.": f"R$ {custo_unit:.2f}", "Custo Total": f"R$ {total_cost:,.2f}"})
+        st.dataframe(pd.DataFrame(cost_rows), use_container_width=True, hide_index=True)
+        st.markdown("---")
+        st.subheader("🔧 Montar Desdobramento")
+        col_m1, col_m2 = st.columns([2, 1])
+        with col_m1:
+            n_dezenas = st.slider(f"Quantas dezenas jogar? ({pick} a {max_nums})", min_value=pick, max_value=max_nums, value=pick + 2, key="n_dezenas_multipla")
+        with col_m2:
+            st.markdown(f"**Custo unitário:** R$ {custo_unit:.2f}")
+        total_bets_multipla, total_cost_multipla = calculate_desdobramento_cost(n_dezenas, pick, custo_unit)
+        col_cm1, col_cm2, col_cm3 = st.columns(3)
+        with col_cm1:
+            metric_card("Dezenas Jogadas", n_dezenas, f"de {cfg['dezenas_total']} possíveis")
+        with col_cm2:
+            metric_card("Total de Apostas", f"{total_bets_multipla:,}", f"C({n_dezenas},{pick})")
+        with col_cm3:
+            metric_card("Custo Total", f"R$ {total_cost_multipla:,.2f}", f"R$ {custo_unit:.2f} × {total_bets_multipla:,}")
+        st.markdown("#### 📋 Garantia de Prêmios")
+        st.caption(f"Se você jogar **{n_dezenas} dezenas** (todas as combinações de {pick}), veja o que acontece quando **X de suas dezenas** são sorteadas:")
+        coverage = calculate_coverage_table(n_dezenas, pick, cfg["premios"])
+        st.plotly_chart(plot_coverage_chart(coverage, pick, cfg["premios"], theme), use_container_width=True)
+        coverage_rows = []
+        for r in coverage:
+            row = {"Se acertar": f"{r['acertadas']} dezenas"}
+            for t in sorted(cfg["premios"].keys(), reverse=True):
+                if f"{t}_count" in r and r[f"{t}_count"] > 0:
+                    row[cfg["premios"][t]] = r[f"{t}_count"]
+            row["Total apostas"] = r["total_bets"]
+            coverage_rows.append(row)
+        st.dataframe(pd.DataFrame(coverage_rows), use_container_width=True, hide_index=True)
+        st.caption("Esta tabela mostra **exatamente** quantas apostas terão cada nível de prêmio, dependendo de quantas de suas dezenas forem sorteadas.")
+        st.markdown("---")
+        st.subheader("🎯 Escolher Dezenas")
+        col_d1, col_d2 = st.columns([3, 1])
+        with col_d1:
+            dezenas_input_multipla = st.text_area(f"Digite {n_dezenas} dezenas separadas por vírgula (ou use sugeridas)", value="", height=60, key="dezenas_multipla_input")
+        with col_d2:
+            usar_sugeridas = st.button("🎲 Usar sugeridas", key="usar_sugeridas_btn", help="Pega as dezenas com maior score do gerador")
+            if usar_sugeridas and "bets" in st.session_state and st.session_state["bets"]:
+                all_nums = []
+                for bet in st.session_state["bets"]:
+                    all_nums.extend(bet)
+                freq_nums = Counter(all_nums).most_common(n_dezenas)
+                suggested = sorted([n for n, _ in freq_nums])
+                st.session_state["dezenas_multipla_suggested"] = suggested
+            if "dezenas_multipla_suggested" in st.session_state:
+                st.info(f"Sugeridas: {', '.join(str(n) for n in st.session_state['dezenas_multipla_suggested'])}")
+        try:
+            if dezenas_input_multipla.strip():
+                dezenas_multipla = sorted(set(int(x.strip()) for x in dezenas_input_multipla.split(",") if x.strip()))
+            elif "dezenas_multipla_suggested" in st.session_state:
+                dezenas_multipla = st.session_state["dezenas_multipla_suggested"]
+            else:
+                dezenas_multipla = []
+        except ValueError:
+            dezenas_multipla = []
+        if len(dezenas_multipla) < pick:
+            st.info(f"Digite ou selecione pelo menos **{pick}** dezenas para gerar o desdobramento.")
+        elif len(dezenas_multipla) > max_nums:
+            st.warning(f"Máximo de {max_nums} dezenas. Você digitou {len(dezenas_multipla)}.")
+        else:
+            if len(dezenas_multipla) != n_dezenas:
+                st.warning(f"Você digitou {len(dezenas_multipla)} dezenas, mas selecionou {n_dezenas} no slider. Usando {len(dezenas_multipla)} dezenas.")
+                n_dezenas = len(dezenas_multipla)
+                total_bets_multipla, total_cost_multipla = calculate_desdobramento_cost(n_dezenas, pick, custo_unit)
+            st.markdown(f"#### ✅ {total_bets_multipla:,} combinações com {n_dezenas} dezenas")
+            st.markdown(f"**Custo total:** R$ {total_cost_multipla:,.2f}")
+            if total_bets_multipla <= 5000:
+                todas_combos = generate_full_desdobramento(dezenas_multipla, pick)
+                st.markdown("##### Aplicar filtros do Line Reduction")
+                usar_filtros_multipla = st.checkbox("Ativar filtros", value=False, key="multipla_filtros_check")
+                if usar_filtros_multipla:
+                    filters_multipla = {}
+                    col_fm1, col_fm2 = st.columns(2)
+                    with col_fm1:
+                        filters_multipla["soma_ativo"] = st.checkbox("Filtro de Soma", value=False, key="ml_soma_check")
+                        if filters_multipla["soma_ativo"]:
+                            soma_min_m = int(np.mean(dezenas_multipla) * pick * 0.7)
+                            soma_max_m = int(np.mean(dezenas_multipla) * pick * 1.3)
+                            filters_multipla["soma_min"] = st.number_input("Soma mín.", value=soma_min_m, key="ml_soma_min")
+                            filters_multipla["soma_max"] = st.number_input("Soma máx.", value=soma_max_m, key="ml_soma_max")
+                        filters_multipla["impares_ativo"] = st.checkbox("Ímpar/Par", value=False, key="ml_impares_check")
+                        if filters_multipla["impares_ativo"]:
+                            filters_multipla["min_impares"] = st.number_input("Mín. ímpares", 0, pick, pick // 2, key="ml_min_imp")
+                            filters_multipla["max_impares"] = st.number_input("Máx. ímpares", 0, pick, pick - 1, key="ml_max_imp")
+                        filters_multipla["consec_ativo"] = st.checkbox("Consecutivos", value=False, key="ml_consec_check")
+                        if filters_multipla["consec_ativo"]:
+                            filters_multipla["max_consecutivos"] = st.slider("Máx. consec.", 1, pick, 2, key="ml_max_consec")
+                    with col_fm2:
+                        filters_multipla["hot_ativo"] = st.checkbox("Mín. Hot", value=False, key="ml_hot_check")
+                        if filters_multipla["hot_ativo"]:
+                            filters_multipla["min_hot"] = st.slider("Mín. hot", 0, pick, 2, key="ml_min_hot")
+                        filters_multipla["cold_ativo"] = st.checkbox("Excluir Cold", value=False, key="ml_cold_check")
+                        filters_multipla["pares_ativo"] = st.checkbox("Pares Fortes", value=False, key="ml_pares_check")
+                        if filters_multipla["pares_ativo"]:
+                            filters_multipla["min_pares_fortes"] = st.slider("Mín. pares", 0, 10, 2, key="ml_min_pares")
+                    quadrants_ml = compute_quadrants(cfg["dezenas_total"], 4)
+                    strong_pairs_ml = st.session_state.get("strong_pairs", [])
+                    filtered_multipla, steps_multipla = apply_progressive_filters(todas_combos, filters_multipla, freq=st.session_state.get("freq", freq), delays=st.session_state.get("delays", delays), strong_pairs=strong_pairs_ml, hot_set=hot_cold_data["hot_set"], cold_set=hot_cold_data["cold_set"], quadrants=quadrants_ml, custo_unit=custo_unit)
+                    final_multipla = filtered_multipla
+                    final_count_multipla = len(final_multipla)
+                    economia_multipla = (len(todas_combos) - final_count_multipla) * custo_unit
+                    col_em1, col_em2, col_em3, col_em4 = st.columns(4)
+                    with col_em1:
+                        metric_card("Combinações Iniciais", f"{len(todas_combos):,}", "Sem filtros")
+                    with col_em2:
+                        metric_card("Após Filtros", f"{final_count_multipla:,}", f"{(1 - final_count_multipla/len(todas_combos))*100:.1f}% reduzido" if len(todas_combos) > 0 else "")
+                    with col_em3:
+                        metric_card("Reduzidas", f"{len(todas_combos) - final_count_multipla:,}", "Eliminadas")
+                    with col_em4:
+                        metric_card("Economia", f"R$ {economia_multipla:,.2f}", "Em apostas não feitas")
+                    if len(steps_multipla) > 1:
+                        st.plotly_chart(plot_reduction_steps(steps_multipla, theme), use_container_width=True)
+                else:
+                    final_multipla = todas_combos
+                    final_count_multipla = len(final_multipla)
+                st.divider()
+                st.markdown(f"#### 📋 {final_count_multipla:,} Apostas Finais")
+                if final_count_multipla <= 500:
+                    df_multipla = pd.DataFrame(final_multipla, columns=[f"d{i+1}" for i in range(pick)])
+                    df_multipla.insert(0, "#", range(1, len(df_multipla) + 1))
+                    st.dataframe(df_multipla, use_container_width=True, hide_index=True)
+                else:
+                    st.warning(f"{final_count_multipla:,} apostas — use o Excel para visualizar.")
+                st.markdown("##### 📥 Exportar")
+                col_ex1, col_ex2, col_ex3 = st.columns(3)
+                with col_ex1:
+                    excel_multipla = export_to_excel(final_multipla, st.session_state.get("freq", freq), st.session_state.get("delays", delays), st.session_state.get("strong_pairs", []), lottery_name)
+                    st.download_button(label="📊 Excel", data=excel_multipla, file_name=f"desdobramento_{lottery_name}_{n_dezenas}dezenas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="download_excel_multipla")
+                with col_ex2:
+                    if HAS_FPDF:
+                        pdf_multipla = export_to_pdf(final_multipla, lottery_name)
+                        if pdf_multipla:
+                            st.download_button(label="📄 PDF", data=pdf_multipla, file_name=f"desdobramento_{lottery_name}_{n_dezenas}dezenas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf", mime="application/pdf", key="download_pdf_multipla")
+                with col_ex3:
+                    wa_url_multipla = whatsapp_share_url(final_multipla[:10], lottery_name)
+                    st.markdown(f"""<a href="{wa_url_multipla}" target="_blank" style='display:inline-block;padding:8px 16px;background:#25D366;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:0.85rem;'>💬 WhatsApp</a>""", unsafe_allow_html=True)
+                st.divider()
+                render_caixa_export(final_multipla, lottery_name, download_key="multipla")
+            else:
+                st.error(f"Total de {total_bets_multipla:,} apostas é muito grande para gerar. Use menos dezenas ou aplique filtros.")
+
     with tab_padroes:
         st.header("📊 Padrões Comportamentais")
         patterns = compute_patterns(draws_matrix, cfg["dezenas_total"])
@@ -2166,7 +2401,7 @@ def main():
                 st.rerun()
 
     st.divider()
-    st.markdown(f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA · PDF · WhatsApp · IA · {datetime.now().year} · Jogue com responsabilidade · Ligue 188 (CVV).</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA · PDF · WhatsApp · IA · Desdobramento · {datetime.now().year} · Jogue com responsabilidade · Ligue 188 (CVV).</div>", unsafe_allow_html=True)
     render_lgpd_consent()
 
 if __name__ == "__main__":
