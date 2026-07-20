@@ -2136,5 +2136,65 @@ def main():
     st.markdown(f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA · PDF · WhatsApp · IA · Desdobramento · {datetime.now().year} · Jogue com responsabilidade · Ligue 188 (CVV).</div>", unsafe_allow_html=True)
     render_lgpd_consent()
 
+def plot_cost_vs_numbers(cfg, theme):
+    from math import comb
+    pick = cfg["dezenas_aposta"]
+    custo_unit = cfg.get("custo_aposta", 5.0)
+    max_nums = cfg.get("max_dezenas_aposta", min(cfg["dezenas_total"], pick + 10))
+    nums = list(range(pick, max_nums + 1))
+    costs = [comb(n, pick) * custo_unit for n in nums]
+    bets = [comb(n, pick) for n in nums]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=[f"{n} dezenas" for n in nums], y=costs,
+        marker_color=theme["accent"],
+        text=[f"R$ {c:,.2f}\n({b} apostas)" for c, b in zip(costs, bets)],
+        textposition="auto"))
+    fig.update_layout(title=f"Custo do Desdobramento — {pick}+ dezenas (R$ {custo_unit:.2f}/aposta)",
+        xaxis_title="Dezenas", yaxis_title="Custo total (R$)",
+        template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]))
+    return fig
+
+def plot_coverage_chart(coverage_data, pick, premios, theme):
+    acertadas = [r["acertadas"] for r in coverage_data]
+    fig = go.Figure()
+    colors = ["#FFD700", "#28a745", "#17a2b8", "#6c757d"]
+    for idx, t in enumerate(sorted(premios.keys(), reverse=True)):
+        vals = [r.get(f"{t}_count", 0) for r in coverage_data]
+        if any(v > 0 for v in vals):
+            fig.add_trace(go.Bar(x=acertadas, y=vals, name=premios[t],
+                marker_color=colors[idx % len(colors)], text=vals, textposition="auto"))
+    fig.update_layout(title="Garantia de Prêmios", xaxis_title="Se X dezenas forem sorteadas",
+        yaxis_title="Apostas premiadas", template="plotly_white", height=400, barmode="group",
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    return fig
+
+def calculate_coverage_table(n_numbers, pick, premios):
+    from math import comb
+    coverage = []
+    for j in range(pick, n_numbers + 1):
+        row = {"acertadas": j}
+        total_bets = 0
+        for t in range(pick, max(0, j - (n_numbers - pick)) - 1, -1):
+            if t > j or t > pick:
+                continue
+            count = comb(j, t) * comb(n_numbers - j, pick - t)
+            row[f"{t}_count"] = count
+            row[f"{t}_label"] = premios.get(t, f"{t} acertos")
+            total_bets += count
+        row["total_bets"] = total_bets
+        coverage.append(row)
+    return coverage
+
+def calculate_desdobramento_cost(n_numbers, pick, custo_unit):
+    from math import comb
+    total_bets = comb(n_numbers, pick)
+    return total_bets, total_bets * custo_unit
+
+def generate_full_desdobramento(numbers, pick):
+    import itertools
+    return [sorted(combo) for combo in itertools.combinations(sorted(numbers), pick)]
+
 if __name__ == "__main__":
     main()
