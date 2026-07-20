@@ -11,7 +11,6 @@ import json
 import requests
 import base64
 import urllib.parse
-from fpdf import FPDF
 from io import BytesIO
 from collections import Counter
 from datetime import datetime, timedelta
@@ -20,6 +19,12 @@ try:
     import xlsxwriter
 except ImportError:
     xlsxwriter = None
+
+try:
+    from fpdf import FPDF
+    HAS_FPDF = True
+except ImportError:
+    HAS_FPDF = False
 
 LOTTERIES = {
     "Mega Sena": {
@@ -74,9 +79,6 @@ THEME_COLORS = {
 
 API_BASE = "https://servicebus2.caixa.gov.br/portaldeloterias/api"
 
-# ============================================================
-# API CAIXA
-# ============================================================
 def fetch_caixa_latest(lottery_name):
     cfg = LOTTERIES[lottery_name]
     url = f"{API_BASE}/{cfg['api_slug']}"
@@ -172,9 +174,6 @@ def fetch_caixa_history(lottery_name, n_concursos=50):
         time.sleep(0.15)
     return pd.DataFrame(rows) if rows else None
 
-# ============================================================
-# UTILITÁRIOS
-# ============================================================
 def is_prime(n):
     if n < 2:
         return False
@@ -230,9 +229,6 @@ def metric_card(label, value, sub=""):
     </div>
     """, unsafe_allow_html=True)
 
-# ============================================================
-# COMPLIANCE / LGPD / PWA
-# ============================================================
 def inject_pwa_config():
     manifest = {
         "name": "Motor Analitico de Loterias",
@@ -319,9 +315,6 @@ def render_lgpd_consent():
             st.session_state["lgpd_accepted"] = True
             st.rerun()
 
-# ============================================================
-# DADOS MOCKADOS
-# ============================================================
 @st.cache_data(show_spinner=False)
 def generate_mock_data(lottery_name, n_draws=300):
     cfg = LOTTERIES[lottery_name]
@@ -343,9 +336,6 @@ def generate_mock_data(lottery_name, n_draws=300):
         rows.append(row)
     return pd.DataFrame(rows)
 
-# ============================================================
-# INGESTÃO DE DADOS
-# ============================================================
 def infer_dezena_columns(df):
     candidates = [c for c in df.columns if str(c).lower().startswith("d") or str(c).lower().startswith("bola")]
     numeric_candidates = []
@@ -451,9 +441,6 @@ def get_meses_series(df, lottery_name):
         return None
     return pd.to_numeric(df["mes"], errors="coerce").dropna()
 
-# ============================================================
-# ANÁLISES ESTATÍSTICAS
-# ============================================================
 @st.cache_data(show_spinner=False)
 def compute_frequency(draws_matrix, total_numbers):
     flat = draws_matrix.flatten()
@@ -738,9 +725,6 @@ def compute_alerts(total_numbers, gap_data, cycle):
         })
     return alerts
 
-# ============================================================
-# GERADOR DE APOSTAS
-# ============================================================
 def is_bet_valid(bet, patterns, lottery_name, quadrants):
     pick = len(bet)
     impares = sum(1 for x in bet if x % 2 != 0)
@@ -925,9 +909,6 @@ def bets_are_unique(new_bets, old_bets):
     old_set = {tuple(b) for b in old_bets}
     return all(tuple(b) not in old_set for b in new_bets)
 
-# ============================================================
-# LINE REDUCTION
-# ============================================================
 def apply_progressive_filters(combinations, filters, freq=None, delays=None, strong_pairs=None, hot_set=None, cold_set=None, quadrants=None, custo_unit=5.0):
     steps = []
     current = list(combinations)
@@ -1064,9 +1045,6 @@ def apply_progressive_filters(combinations, filters, freq=None, delays=None, str
         })
     return current, steps
 
-# ============================================================
-# BACKTESTING
-# ============================================================
 def run_backtest(bets, draws_matrix, lottery_name):
     cfg = LOTTERIES[lottery_name]
     premios = cfg["premios"]
@@ -1132,9 +1110,6 @@ def compare_strategies(lottery_name, draws_matrix, n_bets=10, weight_freq=0.4, w
         })
     return pd.DataFrame(comparison)
 
-# ============================================================
-# CONFERIDOR
-# ============================================================
 def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_bets=None, trevos_sort=None, mes_sort=None):
     cfg = LOTTERIES[lottery_name]
     premios = cfg["premios"]
@@ -1164,9 +1139,6 @@ def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_b
         })
     return pd.DataFrame(resultados)
 
-# ============================================================
-# EXPORTAÇÃO
-# ============================================================
 def export_to_excel(bets, freq, delays, strong_pairs, lottery_name, trevos_bets=None, mes_bets=None, scores_list=None):
     cfg = LOTTERIES[lottery_name]
     total = cfg["dezenas_total"]
@@ -1220,6 +1192,9 @@ def export_to_caixa_json(bets, lottery_name, trevos_bets=None, mes_bets=None):
     return data
 
 def export_to_pdf(bets, lottery_name, scores_list=None, trevos_bets=None, mes_bets=None):
+    if not HAS_FPDF:
+        st.error("Biblioteca fpdf2 não instalada. Adicione 'fpdf2' ao requirements.txt")
+        return None
     cfg = LOTTERIES[lottery_name]
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -1319,9 +1294,6 @@ def render_caixa_export(bets, lottery_name, trevos_bets=None, mes_bets=None, dow
         carrinho_rows.append(row)
     st.dataframe(pd.DataFrame(carrinho_rows), use_container_width=True, hide_index=True)
 
-# ============================================================
-# GRÁFICOS PLOTLY
-# ============================================================
 def plot_frequency_bar(freq, total, theme):
     nums = list(range(1, total + 1))
     vals = [freq.get(n, 0) for n in nums]
@@ -1585,9 +1557,6 @@ def plot_reduction_steps(steps, theme):
     )
     return fig
 
-# ============================================================
-# APP PRINCIPAL
-# ============================================================
 def main():
     st.set_page_config(page_title="Motor Analítico de Loterias", page_icon="🎲", layout="wide")
     apply_theme_css()
@@ -1842,14 +1811,18 @@ def main():
             st.markdown("##### 📱 Compartilhar")
             col_sh1, col_sh2 = st.columns(2)
             with col_sh1:
-                pdf_data = export_to_pdf(bets, lottery_name, scores_list, trevos_bets, mes_bets)
-                st.download_button(
-                    label="📄 Baixar PDF do Volante",
-                    data=pdf_data,
-                    file_name=f"volante_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                    mime="application/pdf",
-                    key="download_pdf_apostas",
-                )
+                if HAS_FPDF:
+                    pdf_data = export_to_pdf(bets, lottery_name, scores_list, trevos_bets, mes_bets)
+                    if pdf_data:
+                        st.download_button(
+                            label="📄 Baixar PDF do Volante",
+                            data=pdf_data,
+                            file_name=f"volante_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                            mime="application/pdf",
+                            key="download_pdf_apostas",
+                        )
+                else:
+                    st.warning("Instale fpdf2 para exportar PDF")
             with col_sh2:
                 wa_url = whatsapp_share_url(bets, lottery_name, scores_list)
                 st.markdown(f"""
@@ -2040,14 +2013,16 @@ def main():
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="download_excel_lr",
                 )
-                pdf_lr = export_to_pdf(filtered_combos, lottery_name)
-                st.download_button(
-                    label="📄 Baixar PDF",
-                    data=pdf_lr,
-                    file_name=f"fechamento_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                    mime="application/pdf",
-                    key="download_pdf_lr",
-                )
+                if HAS_FPDF:
+                    pdf_lr = export_to_pdf(filtered_combos, lottery_name)
+                    if pdf_lr:
+                        st.download_button(
+                            label="📄 Baixar PDF",
+                            data=pdf_lr,
+                            file_name=f"fechamento_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                            mime="application/pdf",
+                            key="download_pdf_lr",
+                        )
                 wa_url_lr = whatsapp_share_url(filtered_combos, lottery_name)
                 st.markdown(f"""
                 <a href="{wa_url_lr}" target="_blank" style='display:inline-block;padding:8px 16px;background:#25D366;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:0.85rem;margin-top:8px;'>
