@@ -1238,12 +1238,12 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
+    # ===== ALERTAS (renderização individual, sem wrapper div) =====
     if alerts:
         alert_colors = {"alta": "#dc3545", "media": "#ffc107"}
-        alert_html = "<div style='margin-bottom:16px;'>"
         for a in alerts:
             color = alert_colors.get(a["severidade"], "#6c757d")
-            alert_html += f"""
+            st.markdown(f"""
             <div style='background:{theme['card']};border-left:4px solid {color};border-radius:8px;padding:12px 16px;margin:6px 0;display:flex;align-items:center;'>
                 <span style='font-size:1.2rem;margin-right:10px;'>{a['icone']}</span>
                 <div>
@@ -1251,9 +1251,7 @@ def main():
                     <div style='font-size:0.8rem;opacity:0.7;'>{a['detalhe']}</div>
                 </div>
             </div>
-            """
-        alert_html += "</div>"
-        st.markdown(alert_html, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
