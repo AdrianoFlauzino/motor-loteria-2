@@ -46,26 +46,30 @@ LOTTERIES = {
         "dezenas_total": 60, "dezenas_aposta": 6, "max_acertos": 6,
         "premios": {4: "Quadra", 5: "Quina", 6: "Sena"},
         "color": "green", "api_slug": "megasena",
-        "tem_trevos": False, "tem_mes": False, "custo_aposta": 5.00,
+        "tem_trevos": False, "tem_mes": False, "custo_aposta": 6.00,
+        "max_dezenas_aposta": 15,
     },
     "Lotofácil": {
         "dezenas_total": 25, "dezenas_aposta": 15, "max_acertos": 15,
         "premios": {11: "Loteria", 12: "Loteria", 13: "Loteria", 14: "Quina", 15: "Sena"},
         "color": "purple", "api_slug": "lotofacil",
-        "tem_trevos": False, "tem_mes": False, "custo_aposta": 3.00,
+        "tem_trevos": False, "tem_mes": False, "custo_aposta": 3.50,
+        "max_dezenas_aposta": 20,
     },
     "Quina": {
         "dezenas_total": 80, "dezenas_aposta": 5, "max_acertos": 5,
         "premios": {2: "Duque", 3: "Terno", 4: "Quadra", 5: "Quina"},
         "color": "blue", "api_slug": "quina",
-        "tem_trevos": False, "tem_mes": False, "custo_aposta": 2.50,
+        "tem_trevos": False, "tem_mes": False, "custo_aposta": 3.00,
+        "max_dezenas_aposta": 15,
     },
     "+Milionária": {
         "dezenas_total": 50, "dezenas_aposta": 6, "max_acertos": 6,
         "premios": {4: "Quadra", 5: "Quina", 6: "Sena"},
         "color": "orange", "api_slug": "maismilionaria",
         "tem_trevos": True, "trevos_total": 6, "trevos_aposta": 2,
-        "tem_mes": False, "custo_aposta": 5.00,
+        "tem_mes": False, "custo_aposta": 6.00,
+        "max_dezenas_aposta": 15,
     },
     "Dia de Sorte": {
         "dezenas_total": 31, "dezenas_aposta": 7, "max_acertos": 7,
@@ -76,6 +80,7 @@ LOTTERIES = {
         "meses_lista": ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
                         "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"],
         "custo_aposta": 2.50,
+        "max_dezenas_aposta": 15,
     },
 }
 
@@ -1249,7 +1254,7 @@ def plot_coverage_chart(coverage_data, pick, premios, theme):
 def plot_cost_vs_numbers(cfg, theme):
     pick = cfg["dezenas_aposta"]
     custo_unit = cfg.get("custo_aposta", 5.0)
-    max_nums = min(cfg["dezenas_total"], pick + 10)
+    max_nums = cfg.get("max_dezenas_aposta", min(cfg["dezenas_total"], pick + 10))
     nums = list(range(pick, max_nums + 1))
     costs = [comb(n, pick) * custo_unit for n in nums]
     bets = [comb(n, pick) for n in nums]
@@ -1261,7 +1266,7 @@ def plot_cost_vs_numbers(cfg, theme):
         textposition="auto",
     ))
     fig.update_layout(
-        title=f"Custo Total do Desdobramento — {cfg['dezenas_aposta']}+ dezenas",
+        title=f"Custo Total do Desdobramento — {pick}+ dezenas (R$ {custo_unit:.2f}/aposta)",
         xaxis_title="Número de dezenas jogadas",
         yaxis_title="Custo total (R$)",
         template="plotly_white", height=400,
@@ -2036,7 +2041,7 @@ def main():
         st.markdown("Jogue com **mais dezenas** e veja o custo total, garantia de prêmios e cobertura completa.")
         pick = cfg["dezenas_aposta"]
         custo_unit = cfg.get("custo_aposta", 5.0)
-        max_nums = min(cfg["dezenas_total"], pick + 10)
+        max_nums = cfg.get("max_dezenas_aposta", min(cfg["dezenas_total"], pick + 10))
         st.markdown("---")
         st.subheader("📊 Tabela de Custos por Quantidade de Dezenas")
         st.plotly_chart(plot_cost_vs_numbers(cfg, theme), use_container_width=True)
@@ -2076,20 +2081,38 @@ def main():
         st.caption("Esta tabela mostra **exatamente** quantas apostas terão cada nível de prêmio, dependendo de quantas de suas dezenas forem sorteadas.")
         st.markdown("---")
         st.subheader("🎯 Escolher Dezenas")
+        st.markdown(f"Escolha **{n_dezenas} dezenas** para o desdobramento:")
         col_d1, col_d2 = st.columns([3, 1])
         with col_d1:
-            dezenas_input_multipla = st.text_area(f"Digite {n_dezenas} dezenas separadas por vírgula (ou use sugeridas)", value="", height=60, key="dezenas_multipla_input")
+            dezenas_input_multipla = st.text_area(f"Digite {n_dezenas} dezenas separadas por vírgula (ou gere abaixo)", value="", height=60, key="dezenas_multipla_input")
         with col_d2:
-            usar_sugeridas = st.button("🎲 Usar sugeridas", key="usar_sugeridas_btn", help="Pega as dezenas com maior score do gerador")
-            if usar_sugeridas and "bets" in st.session_state and st.session_state["bets"]:
-                all_nums = []
-                for bet in st.session_state["bets"]:
-                    all_nums.extend(bet)
-                freq_nums = Counter(all_nums).most_common(n_dezenas)
-                suggested = sorted([n for n, _ in freq_nums])
+            st.markdown("**🎲 Gerar dezenas:**")
+            gerar_tipo = st.selectbox("Tipo de geração", ["Sugeridas (score)", "Aleatórias", "Hot Numbers", "Atrasadas"], key="gerar_tipo_multipla")
+            if st.button("Gerar", key="gerar_dezenas_btn", type="primary"):
+                if gerar_tipo == "Sugeridas (score)":
+                    if "bets" in st.session_state and st.session_state["bets"]:
+                        all_nums = [n for bet in st.session_state["bets"] for n in bet]
+                        freq_nums = Counter(all_nums).most_common(n_dezenas)
+                        suggested = sorted([n for n, _ in freq_nums])
+                    else:
+                        freq_sorted = sorted(freq.items(), key=lambda x: x[1], reverse=True)
+                        suggested = sorted([n for n, _ in freq_sorted[:n_dezenas]])
+                elif gerar_tipo == "Hot Numbers":
+                    hot_sorted = sorted(hot_cold_data["hot_set"])
+                    if len(hot_sorted) < n_dezenas:
+                        freq_sorted = sorted(freq.items(), key=lambda x: x[1], reverse=True)
+                        extras = [n for n, _ in freq_sorted if n not in set(hot_sorted)]
+                        suggested = sorted((hot_sorted + extras)[:n_dezenas])
+                    else:
+                        suggested = sorted(hot_sorted[:n_dezenas])
+                elif gerar_tipo == "Atrasadas":
+                    delays_sorted = sorted(delays.items(), key=lambda x: x[1], reverse=True)
+                    suggested = sorted([n for n, _ in delays_sorted[:n_dezenas]])
+                else:
+                    suggested = sorted(random.sample(range(1, cfg["dezenas_total"] + 1), n_dezenas))
                 st.session_state["dezenas_multipla_suggested"] = suggested
             if "dezenas_multipla_suggested" in st.session_state:
-                st.info(f"Sugeridas: {', '.join(str(n) for n in st.session_state['dezenas_multipla_suggested'])}")
+                st.info(f"Geradas: {', '.join(str(n) for n in st.session_state['dezenas_multipla_suggested'])}")
         try:
             if dezenas_input_multipla.strip():
                 dezenas_multipla = sorted(set(int(x.strip()) for x in dezenas_input_multipla.split(",") if x.strip()))
@@ -2100,12 +2123,11 @@ def main():
         except ValueError:
             dezenas_multipla = []
         if len(dezenas_multipla) < pick:
-            st.info(f"Digite ou selecione pelo menos **{pick}** dezenas para gerar o desdobramento.")
+            st.info(f"Digite ou gere pelo menos **{pick}** dezenas para iniciar o desdobramento.")
         elif len(dezenas_multipla) > max_nums:
-            st.warning(f"Máximo de {max_nums} dezenas. Você digitou {len(dezenas_multipla)}.")
+            st.warning(f"Máximo de {max_nums} dezenas para {lottery_name}. Você tem {len(dezenas_multipla)}.")
         else:
             if len(dezenas_multipla) != n_dezenas:
-                st.warning(f"Você digitou {len(dezenas_multipla)} dezenas, mas selecionou {n_dezenas} no slider. Usando {len(dezenas_multipla)} dezenas.")
                 n_dezenas = len(dezenas_multipla)
                 total_bets_multipla, total_cost_multipla = calculate_desdobramento_cost(n_dezenas, pick, custo_unit)
             st.markdown(f"#### ✅ {total_bets_multipla:,} combinações com {n_dezenas} dezenas")
