@@ -354,6 +354,17 @@ def compute_frequency(draws_matrix, total_numbers):
     return {n: freq.get(n, 0) for n in range(1, total_numbers + 1)}
 
 @st.cache_data(show_spinner=False)
+def compute_weighted_frequency(draws_matrix, total_numbers, decay=0.95):
+    n_draws = len(draws_matrix)
+    weights = np.array([decay ** (n_draws - 1 - i) for i in range(n_draws)])
+    w_freq = {n: 0.0 for n in range(1, total_numbers + 1)}
+    for i, row in enumerate(draws_matrix):
+        w = weights[i]
+        for num in row:
+            w_freq[int(num)] += w
+    return w_freq
+
+@st.cache_data(show_spinner=False)
 def compute_hot_cold(draws_matrix, total_numbers, recent_n=20):
     recent = draws_matrix[-recent_n:] if len(draws_matrix) >= recent_n else draws_matrix
     flat = recent.flatten()
@@ -537,6 +548,55 @@ def compute_cycle_completion(draws_matrix, total_numbers):
         "cycle_start_idx": cycle_start,
     }
 
+def compute_alerts(total_numbers, gap_data, cycle):
+    alerts = []
+    for num in range(1, total_numbers + 1):
+        g = gap_data[num]
+        if g["current_gap"] > g["mean_gap"] and g["mean_gap"] > 0:
+            max_hist = max(g["appearances"][0] if g["appearances"] else 0, g["current_gap"])
+            if g["current_gap"] >= max_hist:
+                alerts.append({
+                    "tipo": "recorde_atraso",
+                    "severidade": "alta",
+                    "icone": "🔴",
+                    "titulo": f"Dezena {num} em recorde de atraso",
+                    "detalhe": f"Gap atual: {g['current_gap']} concursos (média: {g['mean_gap']:.1f})",
+                })
+    if cycle["completion_pct"] >= 99.9:
+        alerts.append({
+            "tipo": "ciclo_completo",
+            "severidade": "alta",
+            "icone": "🟢",
+            "titulo": "Ciclo de Completude atingiu 100%",
+            "detalhe": f"Todas as {total_numbers} dezenas já foram vistas no ciclo atual",
+        })
+    elif cycle["completion_pct"] >= 90:
+        alerts.append({
+            "tipo": "ciclo_quase",
+            "severidade": "media",
+            "icone": "🟡",
+            "titulo": f"Ciclo quase completo: {cycle['completion_pct']}%",
+            "detalhe": f"Faltam {len(cycle['missing'])} dezenas para completar o ciclo",
+        })
+    overdue_count = sum(1 for n in range(1, total_numbers + 1) if gap_data[n]["overdue"])
+    if overdue_count >= 5:
+        alerts.append({
+            "tipo": "multiplas_overdue",
+            "severidade": "media",
+            "icone": "🟡",
+            "titulo": f"{overdue_count} dezenas overdue simultaneamente",
+            "detalhe": "Dezenas com gap > média + 2σ — alta probabilidade de regressão à média",
+        })
+    if cycle["completion_pct"] > 70 and len(cycle["missing"]) <= 5 and cycle["missing"]:
+        alerts.append({
+            "tipo": "ciclo_faltando_poucas",
+            "severidade": "media",
+            "icone": "🟡",
+            "titulo": f"Apenas {len(cycle['missing'])} dezenas faltando no ciclo",
+            "detalhe": f"Dezenas: {', '.join(str(m) for m in cycle['missing'])} recebem +15% no score",
+        })
+    return alerts
+
 def is_bet_valid(bet, patterns, lottery_name, quadrants):
     pick = len(bet)
     impares = sum(1 for x in bet if x % 2 != 0)
@@ -584,12 +644,13 @@ def compute_bet_score(bet, freq, delays, pair_score_map, patterns, quadrants, to
 
 def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
                   weight_freq=0.4, weight_delay=0.3, weight_pairs=0.3,
-                  trevos_matrix=None, meses_series=None,
+                  trevos_matrix=None, meses_series=None, decay=0.95,
                   min_hot=0, exclude_cold=False, hot_set=None, cold_set=None):
     cfg = LOTTERIES[lottery_name]
     total = cfg["dezenas_total"]
     pick = cfg["dezenas_aposta"]
     freq = compute_frequency(draws_matrix, total)
+    freq_weighted = compute_weighted_frequency(draws_matrix, total, decay=decay)
     delays = compute_delays(draws_matrix, total)
     mc_pairs, real_pairs = monte_carlo_pairs(draws_matrix, total, iterations=1000)
     patterns = compute_patterns(draws_matrix, total)
@@ -597,6 +658,7 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
     cycle = compute_cycle_completion(draws_matrix, total)
     gap_data = compute_gap_analysis(draws_matrix, total)
     max_freq = max(freq.values()) if max(freq.values()) > 0 else 1
+    max_freq_w = max(freq_weighted.values()) if max(freq_weighted.values()) > 0 else 1
     max_delay = max(delays.values()) if max(delays.values()) > 0 else 1
     pair_score_map = {num: 0.0 for num in range(1, total + 1)}
     for (a, b), cnt in real_pairs.items():
@@ -606,8 +668,10 @@ def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido",
     scores = {}
     for num in range(1, total + 1):
         f_score = freq.get(num, 0) / max_freq
+        fw_score = freq_weighted.get(num, 0) / max_freq_w
+        blended_freq = 0.5 * f_score + 0.5 * fw_score
         d_score = delays.get(num, 0) / max_delay
-        scores[num] = weight_freq * f_score + weight_delay * d_score
+        scores[num] = weight_freq * blended_freq + weight_delay * d_score
         if num in cycle["missing"] and cycle["completion_pct"] > 70:
             scores[num] *= 1.15
         if gap_data[num]["overdue"]:
@@ -754,14 +818,14 @@ def run_backtest(bets, draws_matrix, lottery_name):
     }
     return results, pd.DataFrame(detail_rows), roi_data
 
-def compare_strategies(lottery_name, draws_matrix, n_bets=10, weight_freq=0.4, weight_delay=0.3, weight_pairs=0.3, trevos_matrix=None, meses_series=None):
+def compare_strategies(lottery_name, draws_matrix, n_bets=10, weight_freq=0.4, weight_delay=0.3, weight_pairs=0.3, trevos_matrix=None, meses_series=None, decay=0.95):
     strategies = ["híbrido", "frequentes", "atrasadas", "aleatória"]
     comparison = []
     for strat in strategies:
         bets, scores_list, freq, delays, real_pairs, patterns, quadrants, cycle, trevos_bets, mes_bets, rej = generate_bets(
             lottery_name, draws_matrix, n_bets=n_bets, strategy=strat,
             weight_freq=weight_freq, weight_delay=weight_delay, weight_pairs=weight_pairs,
-            trevos_matrix=trevos_matrix, meses_series=meses_series,
+            trevos_matrix=trevos_matrix, meses_series=meses_series, decay=decay,
             min_hot=0, exclude_cold=False, hot_set=None, cold_set=None,
         )
         results, df_detail, roi_data = run_backtest(bets, draws_matrix, lottery_name)
@@ -882,6 +946,26 @@ def plot_hot_cold(hot_cold_data, total, theme):
         title=f"Hot / Cold Numbers (últimos {hot_cold_data['recent_n']} sorteios)",
         xaxis_title="Dezena", yaxis_title="Frequência",
         template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
+def plot_weighted_vs_simple(freq_simple, freq_weighted, total, theme):
+    nums = list(range(1, total + 1))
+    vals_s = [freq_simple.get(n, 0) for n in nums]
+    vals_w = [freq_weighted.get(n, 0) for n in nums]
+    max_s = max(vals_s) if max(vals_s) > 0 else 1
+    max_w = max(vals_w) if max(vals_w) > 0 else 1
+    norm_s = [v / max_s for v in vals_s]
+    norm_w = [v / max_w for v in vals_w]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=nums, y=norm_s, marker_color="#CCCCCC", name="Frequência Simples", opacity=0.6))
+    fig.add_trace(go.Bar(x=nums, y=norm_w, marker_color=theme["accent"], name="Frequência Ponderada", opacity=0.8))
+    fig.update_layout(
+        title="Frequência Simples vs Ponderada (normalizada)",
+        xaxis_title="Dezena", yaxis_title="Frequência Normalizada",
+        template="plotly_white", height=400, barmode="group",
         paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
         font=dict(color=theme["text"]),
     )
@@ -1106,6 +1190,10 @@ def main():
         st.subheader("🔥 Hot / Cold Numbers")
         min_hot = st.slider("Mín. de Hot Numbers na aposta", 0, cfg["dezenas_aposta"], 0, key="min_hot_slider")
         exclude_cold = st.checkbox("Excluir Cold Numbers", value=False, key="exclude_cold_checkbox")
+        st.divider()
+        st.subheader("⚖️ Janela Deslizante")
+        decay_factor = st.slider("Fator de decaimento (ponderação)", 0.80, 0.99, 0.95, 0.01, key="decay_slider")
+        st.caption("Sorteios recentes valem mais. 0.99 = quase igual | 0.80 = forte viés para o recente")
 
     df_data = None
     if "df_caixa" in st.session_state and st.session_state["df_caixa"] is not None and st.session_state.get("data_source") == "caixa":
@@ -1129,15 +1217,36 @@ def main():
     trevos_matrix = get_trevos_matrix(df_data, lottery_name) if cfg.get("tem_trevos") else None
     meses_series = get_meses_series(df_data, lottery_name) if cfg.get("tem_mes") else None
     hot_cold_data = compute_hot_cold(draws_matrix, cfg["dezenas_total"])
+    freq_weighted = compute_weighted_frequency(draws_matrix, cfg["dezenas_total"], decay=decay_factor)
+    gap_data = compute_gap_analysis(draws_matrix, cfg["dezenas_total"])
+    cycle = compute_cycle_completion(draws_matrix, cfg["dezenas_total"])
+    alerts = compute_alerts(cfg["dezenas_total"], gap_data, cycle)
     st.sidebar.caption(f"🔴 Hot = top 25% mais sorteados nos últimos {hot_cold_data['recent_n']} concursos")
     st.sidebar.caption(f"🔵 Cold = bottom 25% menos sorteados")
 
     st.markdown(f"""
     <div class="main-header">
         <div class="main-title">🎲 Motor Analítico & Gerador de Apostas</div>
-        <div class="main-subtitle">API Caixa · Quadrantes · Score · Ciclo · Hot/Cold · Gap Analysis · ROI · Conferidor</div>
+        <div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI</div>
     </div>
     """, unsafe_allow_html=True)
+
+    if alerts:
+        alert_colors = {"alta": "#dc3545", "media": "#ffc107"}
+        alert_html = "<div style='margin-bottom:16px;'>"
+        for a in alerts:
+            color = alert_colors.get(a["severidade"], "#6c757d")
+            alert_html += f"""
+            <div style='background:{theme['card']};border-left:4px solid {color};border-radius:8px;padding:12px 16px;margin:6px 0;display:flex;align-items:center;'>
+                <span style='font-size:1.2rem;margin-right:10px;'>{a['icone']}</span>
+                <div>
+                    <div style='font-weight:700;color:{color};font-size:0.9rem;'>{a['titulo']}</div>
+                    <div style='font-size:0.8rem;opacity:0.7;'>{a['detalhe']}</div>
+                </div>
+            </div>
+            """
+        alert_html += "</div>"
+        st.markdown(alert_html, unsafe_allow_html=True)
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -1164,7 +1273,7 @@ def main():
 
     with tab_gerador:
         st.header("🎰 Gerador de Apostas Otimizado")
-        st.markdown("Combina **frequência**, **atraso**, **pares fortes**, **quadrantes**, **score**, **ciclo**, **hot/cold** e **gap analysis**.")
+        st.markdown("Combina **frequência ponderada**, **atraso**, **pares fortes**, **quadrantes**, **score**, **ciclo**, **hot/cold** e **gap analysis**.")
         if st.session_state["gen_counter"] > 0:
             st.caption(f"🔄 Geração #{st.session_state['gen_counter']}")
         if st.button("⚡ Gerar Apostas", type="primary", key="gerar_apostas_button"):
@@ -1174,7 +1283,7 @@ def main():
                     bets, scores_list, freq, delays, real_pairs, patterns, quadrants, cycle, trevos_bets, mes_bets, rejection_reasons = generate_bets(
                         lottery_name, draws_matrix, n_bets=n_bets,
                         strategy=strategy, weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs,
-                        trevos_matrix=trevos_matrix, meses_series=meses_series,
+                        trevos_matrix=trevos_matrix, meses_series=meses_series, decay=decay_factor,
                         min_hot=min_hot, exclude_cold=exclude_cold,
                         hot_set=hot_cold_data["hot_set"], cold_set=hot_cold_data["cold_set"],
                     )
@@ -1479,8 +1588,19 @@ def main():
             cold_nums = sorted(list(hot_cold_data["cold_set"]))
             st.markdown(f"**🔵 Cold Numbers:** {', '.join(str(n) for n in cold_nums)}")
         st.divider()
+        st.subheader("⚖️ Janela Deslizante (Ponderação Exponencial)")
+        freq_simple = compute_frequency(draws_matrix, cfg["dezenas_total"])
+        st.plotly_chart(plot_weighted_vs_simple(freq_simple, freq_weighted, cfg["dezenas_total"], theme), use_container_width=True)
+        st.caption(f"Fator de decaimento: **{decay_factor}** — sorteios mais recentes têm peso exponencialmente maior.")
+        col_w1, col_w2 = st.columns(2)
+        with col_w1:
+            top_weighted = sorted(freq_weighted.items(), key=lambda x: x[1], reverse=True)[:10]
+            st.markdown("**Top 10 (Ponderada):** " + ", ".join(f"{n}({v:.1f})" for n, v in top_weighted))
+        with col_w2:
+            top_simple = sorted(freq_simple.items(), key=lambda x: x[1], reverse=True)[:10]
+            st.markdown("**Top 10 (Simples):** " + ", ".join(f"{n}({v})" for n, v in top_simple))
+        st.divider()
         st.subheader("📏 Gap Analysis (Análise de Intervalos)")
-        gap_data = compute_gap_analysis(draws_matrix, cfg["dezenas_total"])
         st.plotly_chart(plot_gap_analysis(gap_data, cfg["dezenas_total"], theme), use_container_width=True)
         overdue_nums = [n for n in range(1, cfg["dezenas_total"] + 1) if gap_data[n]["overdue"]]
         if overdue_nums:
@@ -1534,7 +1654,7 @@ def main():
                         df_comp = compare_strategies(
                             lottery_name, draws_matrix, n_bets=n_bets,
                             weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs,
-                            trevos_matrix=trevos_matrix, meses_series=meses_series,
+                            trevos_matrix=trevos_matrix, meses_series=meses_series, decay=decay_factor,
                         )
                         st.session_state["df_comparacao"] = df_comp
 
@@ -1644,7 +1764,7 @@ def main():
     st.divider()
     st.markdown(
         f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>"
-        f"Motor Analítico de Loterias · API Caixa · Quadrantes · Score · Ciclo · Hot/Cold · Gap Analysis · ROI · "
+        f"Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · "
         f"{datetime.now().year} · Jogue com responsabilidade.</div>",
         unsafe_allow_html=True
     )
