@@ -51,7 +51,7 @@ LOTTERIES = {
     },
     "Lotofácil": {
         "dezenas_total": 25, "dezenas_aposta": 15, "max_acertos": 15,
-        "premios": {11: "Loteria", 12: "Loteria", 13: "Loteria", 14: "Quina", 15: "Sena"},
+        "premios": {11: "11 Acertos", 12: "12 Acertos", 13: "13 Acertos", 14: "14 Acertos", 15: "15 Acertos"},
         "color": "purple", "api_slug": "lotofacil",
         "tem_trevos": False, "tem_mes": False, "custo_aposta": 3.50,
         "max_dezenas_aposta": 20,
@@ -75,8 +75,7 @@ LOTTERIES = {
         "dezenas_total": 31, "dezenas_aposta": 7, "max_acertos": 7,
         "premios": {4: "Quadra", 5: "Quina", 6: "Sena", 7: "Sena+Mês"},
         "color": "pink", "api_slug": "diadesorte",
-        "tem_trevos": False,
-        "tem_mes": True, "meses_total": 12,
+        "tem_trevos": False, "tem_mes": True, "meses_total": 12,
         "meses_lista": ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
                         "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"],
         "custo_aposta": 2.50,
@@ -85,11 +84,11 @@ LOTTERIES = {
 }
 
 PREMIOS_ESTIMADOS = {
-    "Mega Sena": {"Sena": 50_000_000, "Quina": 50_000, "Quadra": 1500},
-    "Lotofácil": {"Sena": 2_000_000, "Quina": 1000, "Loteria": 25},
-    "Quina": {"Quina": 1_000_000, "Quadra": 10_000, "Terno": 200, "Duque": 5},
-    "+Milionária": {"Sena": 100_000_000, "Quina": 30_000, "Quadra": 1000},
-    "Dia de Sorte": {"Sena+Mês": 500_000, "Sena": 50_000, "Quina": 3000, "Quadra": 100},
+    "Mega Sena": {"Sena": 50000000, "Quina": 50000, "Quadra": 1500},
+    "Lotofácil": {"15 Acertos": 2000000, "14 Acertos": 1500, "13 Acertos": 30, "12 Acertos": 12, "11 Acertos": 6},
+    "Quina": {"Quina": 1000000, "Quadra": 10000, "Terno": 200, "Duque": 5},
+    "+Milionária": {"Sena": 100000000, "Quina": 30000, "Quadra": 1000},
+    "Dia de Sorte": {"Sena+Mês": 500000, "Sena": 50000, "Quina": 3000, "Quadra": 100},
 }
 
 THEME_COLORS = {
@@ -258,18 +257,7 @@ def inject_pwa_config():
         "display": "standalone",
         "background_color": "#0A1628",
         "theme_color": "#1E90FF",
-        "icons": [
-            {
-                "src": "data:image/svg+xml;base64," + base64.b64encode(
-                    b'<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">'
-                    b'<rect width="192" height="192" rx="32" fill="#1E90FF"/>'
-                    b'<text x="96" y="120" font-size="100" text-anchor="middle" fill="white">D</text>'
-                    b'</svg>'
-                ).decode(),
-                "sizes": "192x192",
-                "type": "image/svg+xml",
-            }
-        ],
+        "icons": [{"src": "https://cdn-icons-png.flaticon.com/512/263/263142.png", "sizes": "512x512", "type": "image/png"}]
     }
     manifest_json = json.dumps(manifest)
     st.markdown(f"""
@@ -280,26 +268,6 @@ def inject_pwa_config():
     link.rel = 'manifest';
     link.href = manifestURL;
     document.head.appendChild(link);
-    var meta1 = document.createElement('meta');
-    meta1.name = 'apple-mobile-web-app-capable';
-    meta1.content = 'yes';
-    document.head.appendChild(meta1);
-    var meta2 = document.createElement('meta');
-    meta2.name = 'apple-mobile-web-app-status-bar-style';
-    meta2.content = 'black-translucent';
-    document.head.appendChild(meta2);
-    var meta3 = document.createElement('meta');
-    meta3.name = 'apple-mobile-web-app-title';
-    meta3.content = 'LotoAnalise';
-    document.head.appendChild(meta3);
-    var meta4 = document.createElement('meta');
-    meta4.name = 'mobile-web-app-capable';
-    meta4.content = 'yes';
-    document.head.appendChild(meta4);
-    var meta5 = document.createElement('meta');
-    meta5.name = 'theme-color';
-    meta5.content = '#1E90FF';
-    document.head.appendChild(meta5);
     </script>
     """, unsafe_allow_html=True)
 
@@ -309,11 +277,11 @@ def render_compliance_banner(theme):
         <div style='display:flex;align-items:flex-start;gap:10px;'>
             <span style='font-size:1.3rem;'>⚠️</span>
             <div>
-                <div style='font-weight:700;color:#856404;font-size:0.9rem;margin-bottom:4px;'>Jogo Responsavel</div>
+                <div style='font-weight:700;color:#856404;font-size:0.9rem;margin-bottom:4px;'>Jogo Responsável</div>
                 <div style='font-size:0.8rem;color:{theme['text']};opacity:0.8;line-height:1.4;'>
-                    Este software <b>nao aumenta suas chances reais de ganhar</b>. Loteria e um jogo de azar.
-                    Os modelos estatisticos servem apenas para analise e educacao. Jogue com moderacao.
-                    Se voce ou alguem que voce conhece precisa de ajuda, ligue <b>188</b> (CVV) - gratuito e confidencial.
+                    Este software <b>não aumenta suas chances reais de ganhar</b>. Loteria é um jogo de azar.
+                    Os modelos estatísticos servem apenas para análise e educação. Jogue com moderação.
+                    Se você ou alguém que você conhece precisa de ajuda, ligue <b>188</b> (CVV) - gratuito e confidencial.
                 </div>
             </div>
         </div>
@@ -327,13 +295,11 @@ def render_lgpd_consent():
         st.markdown("""
         <div style='position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;color:white;padding:16px 24px;z-index:9999;display:flex;align-items:center;justify-content:space-between;gap:20px;'>
             <div style='font-size:0.85rem;flex:1;'>
-                Usamos cookies essenciais para funcionamento do app. Nenhum dado pessoal e coletado sem seu consentimento (LGPD - Lei 13.709/2018).
+                Usamos cookies essenciais para funcionamento do app. Nenhum dado pessoal é coletado sem seu consentimento (LGPD - Lei 13.709/2018).
             </div>
+            <button onclick="this.parentElement.style.display='none'" style="background:#1E90FF;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:bold;">Aceitar</button>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("Aceitar LGPD", key="lgpd_accept_btn"):
-            st.session_state["lgpd_accepted"] = True
-            st.rerun()
 
 @st.cache_data(show_spinner=False)
 def generate_mock_data(lottery_name, n_draws=300):
@@ -644,18 +610,16 @@ def count_quadrant_distribution(bet, quadrants):
 @st.cache_data(show_spinner=False)
 def compute_cycle_completion(draws_matrix, total_numbers):
     seen = set()
-    cycle_start = 0
     for i in range(len(draws_matrix) - 1, -1, -1):
         for n in draws_matrix[i]:
             seen.add(int(n))
         if len(seen) == total_numbers:
-            cycle_start = i
             seen = set()
             for n in draws_matrix[i]:
                 seen.add(int(n))
     missing = [n for n in range(1, total_numbers + 1) if n not in seen]
     completion = (len(seen) / total_numbers) * 100
-    return {"seen": sorted(seen), "missing": sorted(missing), "completion_pct": round(completion, 1), "total_unique": len(seen), "total_numbers": total_numbers, "cycle_start_idx": cycle_start}
+    return {"seen": sorted(seen), "missing": sorted(missing), "completion_pct": round(completion, 1), "total_unique": len(seen), "total_numbers": total_numbers}
 
 def compute_alerts(total_numbers, gap_data, cycle):
     alerts = []
@@ -682,7 +646,151 @@ def compute_alerts(total_numbers, gap_data, cycle):
     if cycle["completion_pct"] > 70 and len(cycle["missing"]) <= 5 and cycle["missing"]:
         alerts.append({"tipo": "ciclo_faltando_poucas", "severidade": "media", "icone": "🟡", "titulo": f"Apenas {len(cycle['missing'])} dezenas faltando no ciclo", "detalhe": f"Dezenas: {', '.join(str(m) for m in cycle['missing'])} recebem +15% no score"})
     return alerts
+# === ASSISTANT IA FUNCTIONS ===
+def build_analysis_context(lottery_name, cfg, draws_matrix, freq, delays, gap_data, hot_cold_data, cycle, markov_data, alerts, bets=None, scores_list=None, roi_data=None):
+    total = cfg["dezenas_total"]
+    n_draws = len(draws_matrix)
+    freq_sorted = sorted(freq.items(), key=lambda x: x[1], reverse=True)
+    delays_sorted = sorted(delays.items(), key=lambda x: x[1], reverse=True)
+    overdue = [n for n in range(1, total + 1) if gap_data[n]["overdue"]]
+    context = f"LOTÉRIA: {lottery_name}\nUNIVERSO: {total} dezenas, {cfg['dezenas_aposta']} por aposta\nSORTEIOS ANALISADOS: {n_draws}\n\n"
+    context += f"TOP 10 MAIS FREQUENTES: {', '.join(f'{n}({v}x)' for n, v in freq_sorted[:10])}\n"
+    context += f"TOP 10 MAIS ATRASADAS: {', '.join(f'{n}({v} concursos)' for n, v in delays_sorted[:10])}\n\n"
+    context += f"HOT NUMBERS (top 25% recentes): {sorted(hot_cold_data['hot_set'])}\n"
+    context += f"COLD NUMBERS (bottom 25% recentes): {sorted(hot_cold_data['cold_set'])}\n\n"
+    context += f"CICLO DE COMPLETUDE: {cycle['completion_pct']}% ({len(cycle['seen'])}/{total} vistas)\n"
+    context += f"DEZENAS FALTANDO NO CICLO: {cycle['missing']}\n\n"
+    context += f"DEZENAS OVERDUE (gap > média + 2σ): {overdue}\n\n"
+    context += "GAP ANALYSIS (top 5 maior z-score):\n"
+    gap_sorted = sorted(range(1, total + 1), key=lambda n: gap_data[n]["z_score"], reverse=True)
+    for n in gap_sorted[:5]:
+        g = gap_data[n]
+        context += f"  Dezena {n}: gap={g['current_gap']}, média={g['mean_gap']}, z={g['z_score']}, prob={g['prob_next']}%\n"
+    if markov_data:
+        context += f"\nMARKOV (último sorteio: {markov_data['last_draw']}):\n"
+        mk_sorted = sorted(markov_data["next_probs"].items(), key=lambda x: x[1], reverse=True)
+        context += f"Top 10 por probabilidade: {', '.join(f'{n}({v}%)' for n, v in mk_sorted[:10])}\n"
+    if alerts:
+        context += f"\nALERTAS ATIVOS ({len(alerts)}):\n"
+        for a in alerts:
+            context += f"  {a['icone']} {a['titulo']} — {a['detalhe']}\n"
+    if bets and scores_list:
+        context += f"\nAPOSTAS GERADAS ({len(bets)}):\n"
+        for i, (bet, score) in enumerate(zip(bets[:5], scores_list[:5])):
+            context += f"  Aposta {i+1} (Score {score}): {bet}\n"
+    if roi_data:
+        context += f"\nROI: {roi_data['roi_pct']:+.1f}% | Custo: R$ {roi_data['custo_total']:.2f} | Prêmios: R$ {roi_data['premios_total']:.2f}\n"
+    return context
 
+def local_assistant_response(question, context_data):
+    q = question.lower().strip()
+    lottery_name = context_data.get("lottery_name", "")
+    freq = context_data.get("freq", {})
+    delays = context_data.get("delays", {})
+    gap_data = context_data.get("gap_data", {})
+    hot_cold = context_data.get("hot_cold_data", {})
+    cycle = context_data.get("cycle", {})
+    markov = context_data.get("markov_data", {})
+    alerts = context_data.get("alerts", [])
+    bets = context_data.get("bets", [])
+    scores = context_data.get("scores_list", [])
+    roi = context_data.get("roi_data", {})
+    total = context_data.get("total", 60)
+
+    if any(w in q for w in ["por que", "porque", "explica", "explicar", "motivo", "justifica"]):
+        if bets and scores:
+            resp = f"📊 **Explicação das apostas geradas ({lottery_name}):**\n\nO score de cada aposta (0-100) combina 5 fatores:\n1. **Frequência** (30%)\n2. **Atraso** (20%)\n3. **Quadrantes** (20%)\n4. **Soma** (15%)\n5. **Pares fortes** (15%)\n\n**Boosts aplicados:**\n• Dezenas faltando no ciclo (>70%): +15%\n• Dezenas overdue: +20%\n• Dezenas com Markov P > 30%: +10%\n\n**Top 3 apostas:**\n"
+            for i in range(min(3, len(bets))):
+                resp += f"  Aposta {i+1} (Score {scores[i]}): {bets[i]}\n"
+            return resp
+        return "Gere apostas primeiro na aba Gerador."
+
+    if any(w in q for w in ["atras", "overdue", "devendo", "sumiu"]):
+        delays_sorted = sorted(delays.items(), key=lambda x: x[1], reverse=True)
+        overdue = [n for n in range(1, total + 1) if gap_data.get(n, {}).get("overdue", False)]
+        resp = f"📏 **Dezenas mais atrasadas ({lottery_name}):**\n\n**Top 10 por atraso:**\n"
+        for n, d in delays_sorted[:10]:
+            g = gap_data.get(n, {})
+            resp += f"  Dezena {n}: {d} concursos (média: {g.get('mean_gap', 0):.1f}, z: {g.get('z_score', 0)})\n"
+        if overdue:
+            resp += f"\n🔴 **Overdue:** {overdue}\n"
+        return resp
+
+    if any(w in q for w in ["frequen", "mais sai", "mais aparece", "quente"]):
+        freq_sorted = sorted(freq.items(), key=lambda x: x[1], reverse=True)
+        resp = f"📊 **Dezenas mais frequentes ({lottery_name}):**\n\n**Top 10:**\n"
+        for n, v in freq_sorted[:10]:
+            resp += f"  Dezena {n}: {v}x\n"
+        resp += f"\n🔴 **Hot Numbers:** {sorted(hot_cold.get('hot_set', set()))}\n"
+        return resp
+
+    if "markov" in q:
+        if markov:
+            mk_sorted = sorted(markov["next_probs"].items(), key=lambda x: x[1], reverse=True)
+            resp = f"🔗 **Modelo de Markov ({lottery_name}):**\n\nBaseado no último sorteio: **{markov['last_draw']}**\n\n**Top 10 por probabilidade:**\n"
+            for n, p in mk_sorted[:10]:
+                resp += f"  Dezena {n}: {p}%\n"
+            return resp
+        return "Markov não disponível."
+
+    if "ciclo" in q:
+        resp = f"🔄 **Ciclo de Completude ({lottery_name}):**\n\n**{cycle['completion_pct']}%** completo ({len(cycle['seen'])}/{cycle['total_numbers']} vistas)\n"
+        if cycle['missing']:
+            resp += f"**Faltando:** {cycle['missing']}\n"
+        return resp
+
+    if "alert" in q:
+        if alerts:
+            resp = f"⚠️ **Alertas ativos ({len(alerts)}):**\n\n"
+            for a in alerts:
+                resp += f"{a['icone']} **{a['titulo']}**\n  {a['detalhe']}\n\n"
+            return resp
+        return "Nenhum alerta ativo."
+
+    if "roi" in q or "lucro" in q:
+        if roi:
+            resp = f"💰 **Análise Financeira ({lottery_name}):**\n\n**Custo total:** R$ {roi['custo_total']:,.2f}\n**Prêmios estimados:** R$ {roi['premios_total']:,.2f}\n**ROI:** {roi['roi_pct']:+.1f}%\n**Lucro/Prejuízo:** R$ {roi['lucro_liquido']:,.2f}\n"
+            return resp
+        return "Execute o backtesting primeiro."
+
+    if "estratég" in q:
+        return "⚔️ **Estratégias:**\n\n1. **Híbrido** — roleta ponderada com todos os fatores\n2. **Frequentes** — prioriza dezenas que mais saem\n3. **Atrasadas** — prioriza dezenas que estão devendo\n4. **Aleatória** — puramente random"
+
+    if "gap" in q or "intervalo" in q:
+        resp = f"📏 **Gap Analysis ({lottery_name}):**\n\n"
+        gap_sorted = sorted(range(1, total + 1), key=lambda n: gap_data.get(n, {}).get("z_score", 0), reverse=True)
+        for n in gap_sorted[:5]:
+            g = gap_data.get(n, {})
+            resp += f"  Dezena {n}: gap={g.get('current_gap', 0)}, média={g.get('mean_gap', 0):.1f}, z={g.get('z_score', 0)}\n"
+        return resp
+
+    if "janela" in q or "decay" in q:
+        return "⚖️ **Janela Deslizante:**\n\nSorteios recentes valem mais. O fator de decay controla o peso. 0.99 = quase igual; 0.80 = forte viés para o recente."
+
+    if "par" in q or "dupla" in q:
+        return "🔗 **Pares Fortes:**\n\nIdentifica dezenas que aparecem juntas com frequência. Os 20 pares mais fortes são usados no score (peso 15%)."
+
+    if any(w in q for w in ["olá", "oi", "bom dia", "ajuda", "help"]):
+        return "🤖 **Olá! Sou o assistente do Motor Analítico.**\n\nPosso responder sobre: apostas, atrasadas, frequentes, Markov, ciclo, alertas, ROI, estratégias, gap analysis, janela deslizante e pares fortes. Digite sua pergunta!"
+
+    return "🤖 Não entendi. Tente perguntar sobre: \"por que esses números?\", \"mais atrasadas?\", \"mais frequentes?\", \"probabilidades do markov\", \"alertas ativos\", \"resultado do roi\"."
+
+def openai_assistant_response(question, context, api_key):
+    if not HAS_OPENAI:
+        return "Biblioteca openai não instalada."
+    try:
+        client = OpenAI(api_key=api_key)
+        system_prompt = f"Você é um assistente especializado em análise estatística de loterias da Caixa (Brasil). Use SEMPRE os dados fornecidos abaixo para responder. Não invente números.\n\nDADOS DA ANÁLISE:\n{context}\n\nIMPORTANTE: Lembre sempre que loteria é jogo de azar. Seja direto, técnico e objetivo."
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": question}],
+            max_tokens=800, temperature=0.3,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Erro ao consultar IA: {e}"
+
+# === BET GENERATION FUNCTIONS ===
 def is_bet_valid(bet, patterns, lottery_name, quadrants):
     pick = len(bet)
     impares = sum(1 for x in bet if x % 2 != 0)
@@ -864,6 +972,7 @@ def bets_are_unique(new_bets, old_bets):
     old_set = {tuple(b) for b in old_bets}
     return all(tuple(b) not in old_set for b in new_bets)
 
+# === FILTERING FUNCTIONS ===
 def apply_progressive_filters(combinations, filters, freq=None, delays=None, strong_pairs=None, hot_set=None, cold_set=None, quadrants=None, custo_unit=5.0):
     steps = []
     current = list(combinations)
@@ -907,18 +1016,15 @@ def apply_progressive_filters(combinations, filters, freq=None, delays=None, str
         ("pares_ativo", {"min_pares_fortes": "min_pares_fortes"}, lambda v: f"Mín. {v.get('min_pares_fortes')} pares fortes"),
     ]
     for key, params, label_fn in filter_defs:
-        if filters.get(key) or (key == "cold_ativo" and filters.get("cold_ativo")):
-            f_params = {k: filters.get(k2) if k != "excluir_cold" else True for k, k2 in params.items()}
-            if key == "quad_ativo" and not quadrants: continue
-            if key == "hot_ativo" and not hot_set: continue
-            if key == "cold_ativo" and not cold_set: continue
-            if key == "pares_ativo" and not strong_pairs: continue
+        if filters.get(key):
+            f_params = {k: filters.get(v) if isinstance(v, str) else v for k, v in params.items()}
             prev = len(current)
             current = apply_filter(current, f_params)
             reduzidas = prev - len(current)
             steps.append({"filtro": label_fn(filters), "restantes": len(current), "reduzidas": reduzidas, "redução_pct": (1 - len(current) / total_original) * 100 if total_original > 0 else 0, "economia": reduzidas * custo_unit})
     return current, steps
 
+# === DESDOBRAMENTO FUNCTIONS ===
 def calculate_coverage_table(n_numbers, pick, premios):
     coverage = []
     for j in range(pick, n_numbers + 1):
@@ -943,6 +1049,60 @@ def calculate_desdobramento_cost(n_numbers, pick, custo_unit):
 def generate_full_desdobramento(numbers, pick):
     return [sorted(combo) for combo in itertools.combinations(sorted(numbers), pick)]
 
+# === MANDEL STRATEGY FUNCTIONS ===
+def calculate_mandel_coverage(lottery_name, cfg):
+    total = cfg["dezenas_total"]
+    pick = cfg["dezenas_aposta"]
+    custo = cfg["custo_aposta"]
+    total_combos = comb(total, pick)
+    if cfg.get("tem_trevos"):
+        total_combos *= comb(cfg["trevos_total"], cfg["trevos_aposta"])
+    if cfg.get("tem_mes"):
+        total_combos *= cfg["meses_total"]
+    return {
+        "total_combos": total_combos,
+        "custo_total": total_combos * custo,
+        "custo_unit": custo,
+        "pick": pick,
+        "total": total,
+    }
+
+def calculate_guarantee_combinations(n_numbers, pick, target_hits):
+    total_combos = comb(n_numbers, pick)
+    cobertura_por_bilhete = comb(pick, target_hits)
+    total_target = comb(n_numbers, target_hits)
+    min_bilhetes = total_target / cobertura_por_bilhete
+    return {
+        "total_combos": total_combos,
+        "min_bilhetes_teorico": min_bilhetes,
+        "cobertura_por_bilhete": cobertura_por_bilhete,
+        "total_target": total_target,
+    }
+
+def plot_mandel_cost_analysis(cfg, theme):
+    data = calculate_mandel_coverage("", cfg)
+    premio = 0
+    for k, v in PREMIOS_ESTIMADOS.items():
+        if k == cfg.get("api_slug", ""):
+            premio = max(v.values()) if v else 0
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=["Custo Total (todas combinações)", "Prêmio Principal Estimado"],
+        y=[data["custo_total"], premio],
+        marker_color=[theme["accent"], "#FFD700"],
+        text=[f"R$ {data['custo_total']:,.0f}", f"R$ {premio:,.0f}"],
+        textposition="auto",
+    ))
+    fig.update_layout(
+        title=f"Análise Mandel — {cfg.get('api_slug', '').upper()}",
+        yaxis_title="Valor (R$)",
+        template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
+
+# === BACKTESTING FUNCTIONS ===
 def run_backtest(bets, draws_matrix, lottery_name):
     cfg = LOTTERIES[lottery_name]
     premios = cfg["premios"]
@@ -982,6 +1142,7 @@ def compare_strategies(lottery_name, draws_matrix, n_bets=10, weight_freq=0.4, w
         comparison.append({"Estratégia": strat.capitalize(), "Apostas": len(bets), "Prêmios Ganhos": total_premios, "Custo Total (R$)": roi_data["custo_total"], "Prêmios Total (R$)": roi_data["premios_total"], "ROI %": roi_data["roi_pct"], "Lucro/Prejuízo (R$)": roi_data["lucro_liquido"]})
     return pd.DataFrame(comparison)
 
+# === CONFERIDOR ===
 def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_bets=None, trevos_sort=None, mes_sort=None):
     cfg = LOTTERIES[lottery_name]
     premios = cfg["premios"]
@@ -1003,6 +1164,7 @@ def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_b
         resultados.append({"Aposta #": i + 1, "Dezenas": " - ".join(f"{n:02d}" for n in bet), "Acertos": hits, "Números Acertados": " - ".join(f"{n:02d}" for n in numeros_acertados) if numeros_acertados else "-", "Prêmio": label if label else "-", "Trevo Hits": trevo_hits if trevos_bets else "-", "Mês?": "✅" if mes_acertou else ("❌" if mes_bets else "-")})
     return pd.DataFrame(resultados)
 
+# === EXPORT FUNCTIONS ===
 def export_to_excel(bets, freq, delays, strong_pairs, lottery_name, trevos_bets=None, mes_bets=None, scores_list=None):
     cfg = LOTTERIES[lottery_name]
     total = cfg["dezenas_total"]
@@ -1146,7 +1308,7 @@ def render_caixa_export(bets, lottery_name, trevos_bets=None, mes_bets=None, dow
             row["Mês"] = cfg["meses_lista"][mes_bets[i] - 1]
         carrinho_rows.append(row)
     st.dataframe(pd.DataFrame(carrinho_rows), use_container_width=True, hide_index=True)
-
+# === PLOT FUNCTIONS ===
 def plot_frequency_bar(freq, total, theme):
     nums = list(range(1, total + 1))
     vals = [freq.get(n, 0) for n in nums]
@@ -1275,7 +1437,7 @@ def plot_backtest_results(results, theme):
     labels = [p[0] for p in pairs]
     values = [p[1] for p in pairs]
     fig = go.Figure(data=[go.Bar(x=labels, y=values, marker_color=theme["accent"], text=values, textposition="auto")])
-    fig.update_layout(title="Resultado do Backtesting", xaxis_title="Categoria de Prêmio", yaxis_title="Ocorrências", template="plotly_white", height=400, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.update_layout(title="Resultado do Backtesting (Ordem Crescente)", xaxis_title="Categoria de Prêmio", yaxis_title="Ocorrências", template="plotly_white", height=400, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_scores_bar(scores_list, theme):
@@ -1300,228 +1462,31 @@ def plot_reduction_steps(steps, theme):
     fig.update_layout(title="Redução Progressiva de Combinações", xaxis_title="Filtro aplicado", yaxis_title="Quantidade", template="plotly_white", height=400, barmode="stack", paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]), showlegend=True)
     return fig
 
-def build_analysis_context(lottery_name, cfg, draws_matrix, freq, delays, gap_data, hot_cold_data, cycle, markov_data, alerts, bets=None, scores_list=None, roi_data=None):
-    total = cfg["dezenas_total"]
-    n_draws = len(draws_matrix)
-    freq_sorted = sorted(freq.items(), key=lambda x: x[1], reverse=True)
-    delays_sorted = sorted(delays.items(), key=lambda x: x[1], reverse=True)
-    overdue = [n for n in range(1, total + 1) if gap_data[n]["overdue"]]
-    context = f"LOTÉRIA: {lottery_name}\nUNIVERSO: {total} dezenas, {cfg['dezenas_aposta']} por aposta\nSORTEIOS ANALISADOS: {n_draws}\n\n"
-    context += f"TOP 10 MAIS FREQUENTES: {', '.join(f'{n}({v}x)' for n, v in freq_sorted[:10])}\n"
-    context += f"TOP 10 MAIS ATRASADAS: {', '.join(f'{n}({v} concursos)' for n, v in delays_sorted[:10])}\n\n"
-    context += f"HOT NUMBERS (top 25% recentes): {sorted(hot_cold_data['hot_set'])}\n"
-    context += f"COLD NUMBERS (bottom 25% recentes): {sorted(hot_cold_data['cold_set'])}\n\n"
-    context += f"CICLO DE COMPLETUDE: {cycle['completion_pct']}% ({len(cycle['seen'])}/{total} vistas)\n"
-    context += f"DEZENAS FALTANDO NO CICLO: {cycle['missing']}\n\n"
-    context += f"DEZENAS OVERDUE (gap > média + 2σ): {overdue}\n\n"
-    context += "GAP ANALYSIS (top 5 maior z-score):\n"
-    gap_sorted = sorted(range(1, total + 1), key=lambda n: gap_data[n]["z_score"], reverse=True)
-    for n in gap_sorted[:5]:
-        g = gap_data[n]
-        context += f"  Dezena {n}: gap={g['current_gap']}, média={g['mean_gap']}, z={g['z_score']}, prob={g['prob_next']}%\n"
-    if markov_data:
-        context += f"\nMARKOV (último sorteio: {markov_data['last_draw']}):\n"
-        mk_sorted = sorted(markov_data["next_probs"].items(), key=lambda x: x[1], reverse=True)
-        context += f"Top 10 por probabilidade: {', '.join(f'{n}({v}%)' for n, v in mk_sorted[:10])}\n"
-    if alerts:
-        context += f"\nALERTAS ATIVOS ({len(alerts)}):\n"
-        for a in alerts:
-            context += f"  {a['icone']} {a['titulo']} — {a['detalhe']}\n"
-    if bets and scores_list:
-        context += f"\nAPOSTAS GERADAS ({len(bets)}):\n"
-        for i, (bet, score) in enumerate(zip(bets[:5], scores_list[:5])):
-            context += f"  Aposta {i+1} (Score {score}): {bet}\n"
-    if roi_data:
-        context += f"\nROI: {roi_data['roi_pct']:+.1f}% | Custo: R$ {roi_data['custo_total']:.2f} | Prêmios: R$ {roi_data['premios_total']:.2f}\n"
-    return context
-
-def local_assistant_response(question, context_data):
-    q = question.lower().strip()
-    lottery_name = context_data.get("lottery_name", "")
-    freq = context_data.get("freq", {})
-    delays = context_data.get("delays", {})
-    gap_data = context_data.get("gap_data", {})
-    hot_cold = context_data.get("hot_cold_data", {})
-    cycle = context_data.get("cycle", {})
-    markov = context_data.get("markov_data", {})
-    alerts = context_data.get("alerts", [])
-    bets = context_data.get("bets", [])
-    scores = context_data.get("scores_list", [])
-    roi = context_data.get("roi_data", {})
-    total = context_data.get("total", 60)
-
-    if any(w in q for w in ["por que", "porque", "explica", "explicar", "motivo", "justifica"]):
-        if bets and scores:
-            resp = f"📊 **Explicação das apostas geradas ({lottery_name}):**\n\nO score de cada aposta (0-100) combina 5 fatores:\n1. **Frequência** (30%)\n2. **Atraso** (20%)\n3. **Quadrantes** (20%)\n4. **Soma** (15%)\n5. **Pares fortes** (15%)\n\n**Top 3 apostas:**\n"
-            for i in range(min(3, len(bets))):
-                resp += f"  Aposta {i+1} (Score {scores[i]}): {bets[i]}\n"
-            return resp
-        return "Gere apostas primeiro na aba Gerador."
-
-    if any(w in q for w in ["atras", "overdue", "devendo"]):
-        delays_sorted = sorted(delays.items(), key=lambda x: x[1], reverse=True)
-        overdue = [n for n in range(1, total + 1) if gap_data.get(n, {}).get("overdue", False)]
-        resp = f"📏 **Dezenas mais atrasadas ({lottery_name}):**\n\n**Top 10 por atraso:**\n"
-        for n, d in delays_sorted[:10]:
-            g = gap_data.get(n, {})
-            resp += f"  Dezena {n}: {d} concursos (média: {g.get('mean_gap', 0):.1f}, z: {g.get('z_score', 0)})\n"
-        if overdue:
-            resp += f"\n🔴 **Overdue:** {overdue}\n"
-        return resp
-
-    if any(w in q for w in ["frequente", "mais sai", "quente"]):
-        freq_sorted = sorted(freq.items(), key=lambda x: x[1], reverse=True)
-        resp = f"📊 **Dezenas mais frequentes ({lottery_name}):**\n\n**Top 10:**\n"
-        for n, v in freq_sorted[:10]:
-            resp += f"  Dezena {n}: {v}x\n"
-        return resp
-
-    if "markov" in q:
-        if markov:
-            mk_sorted = sorted(markov["next_probs"].items(), key=lambda x: x[1], reverse=True)
-            resp = f"🔗 **Modelo de Markov:**\n\n**Top 10 por probabilidade:**\n"
-            for n, p in mk_sorted[:10]:
-                resp += f"  Dezena {n}: {p}%\n"
-            return resp
-        return "Markov não disponível."
-
-    if "ciclo" in q:
-        resp = f"🔄 **Ciclo de Completude:** {cycle['completion_pct']}%\n\n{cycle['total_unique']}/{cycle['total_numbers']} dezenas vistas.\n"
-        if cycle['missing']:
-            resp += f"**Faltando:** {cycle['missing']}\n"
-        return resp
-
-    if "alert" in q:
-        if alerts:
-            resp = "⚠️ **Alertas ativos:**\n\n"
-            for a in alerts:
-                resp += f"{a['icone']} **{a['titulo']}**\n  {a['detalhe']}\n\n"
-            return resp
-        return "Nenhum alerta ativo."
-
-    if "roi" in q:
-        if roi:
-            resp = f"💰 **ROI:** {roi['roi_pct']:+.1f}%\n\nCusto: R$ {roi['custo_total']:,.2f}\nPrêmios: R$ {roi['premios_total']:,.2f}\nLucro/Prejuízo: R$ {roi['lucro_liquido']:,.2f}\n"
-            return resp
-        return "Execute o backtesting primeiro."
-
-    if any(w in q for w in ["olá", "oi", "bom dia", "ajuda"]):
-        return "🤖 **Olá!**\n\nPergunte sobre: apostas, atrasadas, frequentes, Markov, ciclo, alertas, ROI, estratégias, gap analysis."
-
-    return "🤖 Pergunte sobre: \"por que esses números?\", \"mais atrasadas?\", \"mais frequentes?\", \"probabilidades do markov\", \"alertas ativos\", \"resultado do roi\"."
-
-def openai_assistant_response(question, context, api_key):
-    if not HAS_OPENAI:
-        return "Biblioteca openai não instalada. Adicione 'openai' ao requirements.txt"
-    try:
-        client = OpenAI(api_key=api_key)
-        system_prompt = f"""Você é um assistente especializado em análise estatística de loterias da Caixa (Brasil).
-Use SEMPRE os dados fornecidos abaixo para responder. Não invente números.
-
-DADOS DA ANÁLISE:
-{context}
-
-IMPORTANTE: Lembre sempre que loteria é jogo de azar e os modelos não aumentam chances reais.
-Seja direto, técnico e objetivo. Use os dados fornecidos."""
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": question}],
-            max_tokens=800, temperature=0.3,
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"Erro ao consultar IA: {e}. Verifique sua API key."
-
-def calculate_mandel_coverage(lottery_name, cfg):
-    """Calcula o custo total para cobrir todas as combinações (Buying the Pot)"""
-    from math import comb
-    total = cfg["dezenas_total"]
-    pick = cfg["dezenas_aposta"]
-    custo = cfg["custo_aposta"]
-    
-    # Combinações totais
-    if cfg.get("tem_trevos"):
-        total_combos = comb(total, pick) * comb(cfg["trevos_total"], cfg["trevos_aposta"])
-    elif cfg.get("tem_mes"):
-        total_combos = comb(total, pick) * cfg["meses_total"]
-    else:
-        total_combos = comb(total, pick)
-    
-    custo_total = total_combos * custo
-    
-    return {
-        "total_combos": total_combos,
-        "custo_total": custo_total,
-        "custo_unit": custo,
-        "pick": pick,
-        "total": total,
-    }
-
-def calculate_guarantee_combinations(n_numbers, pick, target_hits):
-    """Calcula quantas combinações são necessárias para GARANTIR um prêmio de target_hits acertos
-    usando o conceito de cobertura combinatória (Mandel)"""
-    from math import comb
-    # Para garantir target_hits acertos jogando n_numbers dezenas,
-    # precisamos de todas as combinações de pick números
-    # A cobertura mínima é C(n_numbers, pick) / C(n_numbers - target_hits, pick - target_hits)
-    # Mas a garantia real usa o conceito de "lottery covering design"
-    # Fórmula simplificada: para garantir pelo menos target_hits acertos,
-    # o número mínimo de bilhetes é C(n_numbers, pick) / C(n_numbers, target_hits) * C(pick, target_hits)
-    total_combos = comb(n_numbers, pick)
-    # Cada bilhete cobre C(pick, target_hits) combinações de target_hits
-    # Total de combinações de target_hits possíveis: C(n_numbers, target_hits)
-    cobertura_por_bilhete = comb(pick, target_hits)
-    total_target = comb(n_numbers, target_hits)
-    # Número mínimo teórico (lower bound)
-    min_bilhetes = total_target / cobertura_por_bilhete
-    return {
-        "total_combos": total_combos,
-        "min_bilhetes_teorico": min_bilhetes,
-        "cobertura_por_bilhete": cobertura_por_bilhete,
-        "total_target": total_target,
-    }
-
-def plot_mandel_cost_analysis(cfg, theme):
-    """Gráfico mostrando custo total vs prêmio acumulado"""
-    from math import comb
-    total = cfg["dezenas_total"]
-    pick = cfg["dezenas_aposta"]
-    custo = cfg["custo_aposta"]
-    
-    # Combinações totais
-    if cfg.get("tem_trevos"):
-        total_combos = comb(total, pick) * comb(cfg["trevos_total"], cfg["trevos_aposta"])
-    elif cfg.get("tem_mes"):
-        total_combos = comb(total, pick) * cfg["meses_total"]
-    else:
-        total_combos = comb(total, pick)
-    
-    custo_total = total_combos * custo
-    
-    # Prêmios estimados para comparação
-    premios = PREMIOS_ESTIMADOS.get(cfg.get("api_slug", ""), {})
-    # Usar o prêmio principal
-    premio_principal = 0
-    for k, v in PREMIOS_ESTIMADOS.items():
-        if k == cfg.get("api_slug", ""):
-            premio_principal = max(v.values()) if v else 0
-    
+def plot_coverage_chart(coverage_data, pick, premios, theme):
+    acertadas = [r["acertadas"] for r in coverage_data]
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=["Custo Total (todas combinações)", "Prêmio Principal Estimado"],
-        y=[custo_total, premio_principal],
-        marker_color=[theme["accent"], "#FFD700"],
-        text=[f"R$ {custo_total:,.0f}", f"R$ {premio_principal:,.0f}"],
-        textposition="auto",
-    ))
-    fig.update_layout(
-        title=f"Análise Mandel — {cfg.get('api_slug', '').upper()}",
-        yaxis_title="Valor (R$)",
-        template="plotly_white", height=400,
-        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
-        font=dict(color=theme["text"]),
-    )
+    prize_levels = sorted([t for t in premios.keys()], reverse=True)
+    colors = ["#FFD700", "#28a745", "#17a2b8", "#6c757d"]
+    for idx, t in enumerate(prize_levels):
+        vals = [r.get(f"{t}_count", 0) for r in coverage_data]
+        if any(v > 0 for v in vals):
+            fig.add_trace(go.Bar(x=acertadas, y=vals, name=premios[t], marker_color=colors[idx % len(colors)], text=vals, textposition="auto"))
+    fig.update_layout(title="Garantia de Prêmios por Número de Acertos", xaxis_title="Se X de suas dezenas forem sorteadas", yaxis_title="Quantidade de apostas premiadas", template="plotly_white", height=400, barmode="group", paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
+
+def plot_cost_vs_numbers(cfg, theme):
+    pick = cfg["dezenas_aposta"]
+    custo_unit = cfg.get("custo_aposta", 5.0)
+    max_nums = cfg.get("max_dezenas_aposta", min(cfg["dezenas_total"], pick + 10))
+    nums = list(range(pick, max_nums + 1))
+    costs = [comb(n, pick) * custo_unit for n in nums]
+    bets = [comb(n, pick) for n in nums]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=[f"{n} dezenas" for n in nums], y=costs, marker_color=theme["accent"], text=[f"R$ {c:,.2f}\n({b} apostas)" for c, b in zip(costs, bets)], textposition="auto"))
+    fig.update_layout(title=f"Custo Total do Desdobramento — {pick}+ dezenas (R$ {custo_unit:.2f}/aposta)", xaxis_title="Número de dezenas jogadas", yaxis_title="Custo total (R$)", template="plotly_white", height=400, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    return fig
+
+# === MAIN APP ===
 def main():
     st.set_page_config(page_title="Motor Analítico de Loterias", page_icon="🎲", layout="wide")
     apply_theme_css()
@@ -1545,7 +1510,7 @@ def main():
         if st.button("🔄 Buscar dados da Caixa", key="fetch_caixa_button", type="secondary"):
             with st.spinner(f"Buscando {n_concursos_api} concursos da {lottery_name} na Caixa..."):
                 df_caixa = fetch_caixa_history(lottery_name, n_concursos_api)
-                if df_caixa is not None and len(df_caixa) > 0:
+                if df_caixa is not None and len(df_cixa) > 0:
                     st.session_state["df_caixa"] = df_caixa
                     st.session_state["data_source"] = "caixa"
                     st.sidebar.success(f"✅ {len(df_caixa)} concursos reais carregados!")
@@ -1569,6 +1534,7 @@ def main():
         st.divider()
         st.subheader("⚖️ Janela Deslizante")
         decay_factor = st.slider("Fator de decaimento (ponderação)", 0.80, 0.99, 0.95, 0.01, key="decay_slider")
+        st.caption("Sorteios recentes valem mais. 0.99 = quase igual | 0.80 = forte viés para o recente")
 
     df_data = None
     if "df_caixa" in st.session_state and st.session_state["df_caixa"] is not None and st.session_state.get("data_source") == "caixa":
@@ -1599,10 +1565,15 @@ def main():
     markov_data = compute_markov_chain(draws_matrix, cfg["dezenas_total"])
     freq = compute_frequency(draws_matrix, cfg["dezenas_total"])
     delays = compute_delays(draws_matrix, cfg["dezenas_total"])
-    st.sidebar.caption(f"🔴 Hot = top 25% nos últimos {hot_cold_data['recent_n']} concursos")
-    st.sidebar.caption(f"🔵 Cold = bottom 25%")
+    st.sidebar.caption(f"🔴 Hot = top 25% mais sorteados nos últimos {hot_cold_data['recent_n']} concursos")
+    st.sidebar.caption(f"🔵 Cold = bottom 25% menos sorteados")
 
-    st.markdown(f"""<div class="main-header"><div class="main-title">🎲 Motor Analítico & Gerador de Apostas</div><div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA · PDF · WhatsApp · IA · Desdobramento</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="main-header">
+        <div class="main-title">🎲 Motor Analítico & Gerador de Apostas</div>
+        <div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA · IA · Desdobramento</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     render_compliance_banner(theme)
 
@@ -1610,7 +1581,15 @@ def main():
         alert_colors = {"alta": "#dc3545", "media": "#ffc107"}
         for a in alerts:
             color = alert_colors.get(a["severidade"], "#6c757d")
-            st.markdown(f"""<div style='background:{theme['card']};border-left:4px solid {color};border-radius:8px;padding:12px 16px;margin:6px 0;display:flex;align-items:center;'><span style='font-size:1.2rem;margin-right:10px;'>{a['icone']}</span><div><div style='font-weight:700;color:{color};font-size:0.9rem;'>{a['titulo']}</div><div style='font-size:0.8rem;opacity:0.7;'>{a['detalhe']}</div></div></div>""", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style='background:{theme['card']};border-left:4px solid {color};border-radius:8px;padding:12px 16px;margin:6px 0;display:flex;align-items:center;'>
+                <span style='font-size:1.2rem;margin-right:10px;'>{a['icone']}</span>
+                <div>
+                    <div style='font-weight:700;color:{color};font-size:0.9rem;'>{a['titulo']}</div>
+                    <div style='font-size:0.8rem;opacity:0.7;'>{a['detalhe']}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -1626,9 +1605,9 @@ def main():
 
     st.divider()
 
-   tab_gerador, tab_conferidor, tab_fechamento, tab_multipla, tab_mandel, tab_padroes, tab_backtest, tab_dados, tab_assistente = st.tabs([
-    "🎰 Gerador", "✅ Conferidor", "🔢 Line Reduction", "🎲 Apostas Múltiplas", "🎯 Estratégia Mandel", "📊 Padrões", "🔬 Backtesting", "📋 Dados", "🤖 Assistente IA"
-])
+    tab_gerador, tab_conferidor, tab_fechamento, tab_multipla, tab_mandel, tab_padroes, tab_backtest, tab_dados, tab_assistente = st.tabs([
+        "🎰 Gerador", "✅ Conferidor", "🔢 Line Reduction", "🎲 Apostas Múltiplas", "🎯 Estratégia Mandel", "📊 Padrões", "🔬 Backtesting", "📋 Dados", "🤖 Assistente IA"
+    ])
 
     with tab_gerador:
         st.header("🎰 Gerador de Apostas Otimizado")
@@ -1693,23 +1672,45 @@ def main():
                     st.markdown(f"**{cycle_disp['completion_pct']}%** do universo já foi sorteado no ciclo atual.")
                     st.markdown(f"**{cycle_disp['total_unique']}** de **{cycle_disp['total_numbers']}** dezenas vistas.")
                     if cycle_disp["missing"]:
-                        st.markdown(f"**Dezenas faltando:** {', '.join(str(m) for m in cycle_disp['missing'][:20])}")
+                        missing_str = ", ".join(str(m) for m in cycle_disp["missing"][:20])
+                        st.markdown(f"**Dezenas faltando:** {missing_str}{'...' if len(cycle_disp['missing']) > 20 else ''}")
+                        st.caption("Dezenas faltando no ciclo recebem +15% no score quando o ciclo > 70%.")
             if rejection_reasons:
-                with st.expander(f"📊 Estatísticas de Validação ({len(rejection_reasons)} rejeitadas)"):
+                with st.expander(f"📊 Estatísticas de Validação ({len(rejection_reasons)} apostas rejeitadas)"):
                     reason_counts = Counter(rejection_reasons)
-                    st.dataframe(pd.DataFrame([{"Motivo": k, "Quantidade": v} for k, v in reason_counts.most_common()]), use_container_width=True, hide_index=True)
+                    df_rej = pd.DataFrame([{"Motivo": k, "Quantidade": v} for k, v in reason_counts.most_common()])
+                    st.dataframe(df_rej, use_container_width=True, hide_index=True)
+                    st.caption("Apostas rejeitadas não chegam ao resultado final — o gerador cria novas até passar em todos os critérios.")
             st.markdown("### Visualização")
             cols = st.columns(min(len(bets), 5))
             for i, bet in enumerate(bets[:10]):
                 with cols[i % len(cols)]:
                     balls_html = " ".join([f"<span style='display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:50%;background:{'#FF4444' if n in hot_cold_data['hot_set'] else ('#4488FF' if n in hot_cold_data['cold_set'] else theme['accent'])};color:white;font-weight:bold;margin:2px;font-size:0.75rem;'>{n}</span>" for n in bet])
+                    extra_html = ""
+                    if trevos_bets:
+                        trevos_html = " ".join([f"<span style='display:inline-block;width:28px;height:28px;line-height:28px;text-align:center;border-radius:50%;background:#FF8C00;color:white;font-weight:bold;margin:2px;font-size:0.75rem;'>🍀{t}</span>" for t in trevos_bets[i]])
+                        extra_html = f"<br>{trevos_html}"
+                    if mes_bets:
+                        mes_nome = cfg["meses_lista"][mes_bets[i] - 1]
+                        extra_html += f"<br><span style='display:inline-block;padding:4px 10px;border-radius:8px;background:#FF69B4;color:white;font-weight:bold;margin:2px;font-size:0.75rem;'>📅 {mes_nome}</span>"
                     score_badge = f"<span style='display:inline-block;padding:2px 8px;border-radius:6px;background:#28a745;color:white;font-weight:bold;font-size:0.7rem;margin-left:6px;'>Score: {scores_list[i]}</span>" if scores_list else ""
-                    st.markdown(f"<div style='padding:8px;background:{theme['card']};border-radius:10px;margin:4px 0;'><b>Aposta {i+1}</b>{score_badge}<br>{balls_html}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='padding:8px;background:{theme['card']};border-radius:10px;margin:4px 0;'><b>Aposta {i+1}</b>{score_badge}<br>{balls_html}{extra_html}</div>", unsafe_allow_html=True)
             col_g1, col_g2 = st.columns(2)
             with col_g1:
                 st.plotly_chart(plot_frequency_bar(freq_disp, cfg["dezenas_total"], theme), use_container_width=True)
             with col_g2:
                 st.plotly_chart(plot_delays_bar(delays_disp, cfg["dezenas_total"], theme), use_container_width=True)
+            if cfg.get("tem_trevos") and trevos_matrix is not None:
+                tf = compute_trevos_frequency(trevos_matrix, cfg["trevos_total"])
+                td = compute_trevos_delays(trevos_matrix, cfg["trevos_total"])
+                col_t1, col_t2 = st.columns(2)
+                with col_t1:
+                    st.plotly_chart(plot_trevos_frequency(tf, cfg["trevos_total"], theme), use_container_width=True)
+                with col_t2:
+                    st.plotly_chart(plot_delays_bar(td, cfg["trevos_total"], theme, " (Trevos)"), use_container_width=True)
+            if cfg.get("tem_mes") and meses_series is not None:
+                mf = compute_meses_frequency(meses_series, cfg["meses_total"])
+                st.plotly_chart(plot_meses_frequency(mf, cfg["meses_lista"], theme), use_container_width=True)
             st.subheader("🔗 Pares Fortes (Monte Carlo + Histórico)")
             df_pairs = pd.DataFrame(strong_pairs, columns=["Par","Ocorrências"])
             df_pairs["Dezena_A"] = df_pairs["Par"].apply(lambda x: x[0])
@@ -1729,7 +1730,7 @@ def main():
                     st.warning("Instale fpdf2 para exportar PDF")
             with col_sh2:
                 wa_url = whatsapp_share_url(bets, lottery_name, scores_list)
-                st.markdown(f"""<a href="{wa_url}" target="_blank" style='display:inline-block;padding:8px 16px;background:#25D366;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:0.85rem;'>💬 WhatsApp</a>""", unsafe_allow_html=True)
+                st.markdown(f"""<a href="{wa_url}" target="_blank" style='display:inline-block;padding:8px 16px;background:#25D366;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:0.85rem;'>💬 Compartilhar no WhatsApp</a>""", unsafe_allow_html=True)
             st.divider()
             render_caixa_export(bets, lottery_name, trevos_bets, mes_bets, download_key="gerador")
         else:
@@ -1737,6 +1738,7 @@ def main():
 
     with tab_conferidor:
         st.header("✅ Conferidor de Resultados")
+        st.markdown("Confere suas apostas geradas contra o **último sorteio real** da Caixa.")
         col_conf1, col_conf2 = st.columns([2, 1])
         with col_conf2:
             if st.button("🔄 Buscar último sorteio", key="fetch_ultimo_button", type="secondary"):
@@ -1746,6 +1748,7 @@ def main():
                         parsed = parse_caixa_json(latest_data, lottery_name)
                         if parsed:
                             st.session_state["ultimo_sorteio"] = parsed
+                            st.session_state["ultimo_sorteio_raw"] = latest_data
                             st.success("✅ Sorteio carregado!")
                         else:
                             st.error("Não foi possível processar o sorteio.")
@@ -1761,22 +1764,47 @@ def main():
                 dezenas_sort = [sorteio.get(f"d{i+1}") for i in range(pick) if sorteio.get(f"d{i+1}") is not None]
                 dezenas_html = " ".join([f"<span style='display:inline-block;width:36px;height:36px;line-height:36px;text-align:center;border-radius:50%;background:#28a745;color:white;font-weight:bold;margin:3px;font-size:1rem;'>{n:02d}</span>" for n in dezenas_sort])
                 st.markdown(f"<div style='padding:12px;background:{theme['card']};border-radius:12px;margin:8px 0;'>{dezenas_html}</div>", unsafe_allow_html=True)
+                trevos_sort = None
+                if cfg.get("tem_trevos"):
+                    trevos_sort = [sorteio.get(f"t{i+1}") for i in range(cfg["trevos_aposta"]) if sorteio.get(f"t{i+1}") is not None]
+                    if trevos_sort:
+                        trevos_html = " ".join([f"<span style='display:inline-block;width:36px;height:36px;line-height:36px;text-align:center;border-radius:50%;background:#FF8C00;color:white;font-weight:bold;margin:3px;font-size:1rem;'>🍀{t}</span>" for t in trevos_sort])
+                        st.markdown(f"<div style='padding:8px;'>{trevos_html}</div>", unsafe_allow_html=True)
+                mes_sort = None
+                if cfg.get("tem_mes"):
+                    mes_sort = sorteio.get("mes")
+                    if mes_sort and 1 <= mes_sort <= 12:
+                        mes_nome = cfg["meses_lista"][mes_sort - 1]
+                        st.markdown(f"<div style='padding:8px;'><span style='display:inline-block;padding:6px 16px;border-radius:8px;background:#FF69B4;color:white;font-weight:bold;font-size:1rem;'>📅 {mes_nome}</span></div>", unsafe_allow_html=True)
             if "bets" in st.session_state and st.session_state["bets"] and dezenas_sort:
                 bets = st.session_state["bets"]
-                df_conf = conferir_apostas(bets, dezenas_sort, lottery_name)
+                trevos_bets = st.session_state.get("trevos_bets", [])
+                mes_bets = st.session_state.get("mes_bets", [])
                 st.divider()
                 st.subheader("🎯 Conferência das suas Apostas")
+                df_conf = conferir_apostas(bets, dezenas_sort, lottery_name, trevos_bets if trevos_bets else None, mes_bets if mes_bets else None, trevos_sort, mes_sort)
                 st.dataframe(df_conf, use_container_width=True, hide_index=True)
                 tem_premio = df_conf[df_conf["Prêmio"] != "-"]
                 if not tem_premio.empty:
                     st.success(f"🎉 **{len(tem_premio)} aposta(s) premiada(s)!**")
+                    st.dataframe(tem_premio, use_container_width=True, hide_index=True)
                 else:
-                    st.info("Nenhuma aposta premiada neste sorteio.")
+                    st.info("Nenhuma aposta premiada neste sorteio. Tente gerar novas apostas!")
+                col_c1, col_c2, col_c3 = st.columns(3)
+                with col_c1:
+                    metric_card("Máximo de Acertos", df_conf["Acertos"].max(), f"em {len(bets)} apostas")
+                with col_c2:
+                    metric_card("Média de Acertos", f"{df_conf['Acertos'].mean():.1f}", "por aposta")
+                with col_c3:
+                    metric_card("Apostas Premiadas", len(tem_premio), "neste sorteio")
             else:
-                st.info("Gere apostas na aba Gerador primeiro.")
+                st.info("Gere apostas na aba **Gerador** primeiro para conferir com este sorteio.")
+        else:
+            st.info("Clique em **🔄 Buscar último sorteio** para carregar o resultado mais recente da Caixa.")
 
     with tab_fechamento:
         st.header("🔢 Line Reduction Interativo")
+        st.markdown("Aplica filtros **progressivamente** e vê a redução em tempo real a cada filtro.")
         dezenas_input = st.text_area("Digite as dezenas separadas por vírgula (ex: 5, 12, 23, 34, 47, 58)", value="", height=80, key="dezenas_textarea_lr")
         pick = cfg["dezenas_aposta"]
         custo_unit = cfg.get("custo_aposta", 5.0)
@@ -1802,14 +1830,14 @@ def main():
                     soma_max_def = int(np.mean(dezenas_list) * pick * 1.3)
                     filters["soma_min"] = st.number_input("Soma mínima", value=soma_min_def, key="lr_soma_min")
                     filters["soma_max"] = st.number_input("Soma máxima", value=soma_max_def, key="lr_soma_max")
-                filters["impares_ativo"] = st.checkbox("Ímpar/Par", value=False, key="lr_impares_check")
+                filters["impares_ativo"] = st.checkbox("Filtro de Ímpar/Par", value=False, key="lr_impares_check")
                 if filters["impares_ativo"]:
                     filters["min_impares"] = st.number_input("Mín. ímpares", 0, pick, pick // 2, key="lr_min_imp")
                     filters["max_impares"] = st.number_input("Máx. ímpares", 0, pick, pick - 1, key="lr_max_imp")
-                filters["consec_ativo"] = st.checkbox("Consecutivos", value=False, key="lr_consec_check")
+                filters["consec_ativo"] = st.checkbox("Máx. Consecutivos", value=False, key="lr_consec_check")
                 if filters["consec_ativo"]:
                     filters["max_consecutivos"] = st.slider("Máx. consecutivos", 1, pick, 2, key="lr_max_consec")
-                filters["quad_ativo"] = st.checkbox("Quadrantes", value=False, key="lr_quad_check")
+                filters["quad_ativo"] = st.checkbox("Máx. por Quadrante", value=False, key="lr_quad_check")
                 if filters["quad_ativo"]:
                     filters["max_por_quad"] = st.slider("Máx. por quadrante", 1, pick, pick // 2, key="lr_max_quad")
             with col_f2:
@@ -1817,7 +1845,7 @@ def main():
                 if filters["hot_ativo"]:
                     filters["min_hot"] = st.slider("Mín. hot numbers", 0, pick, 2, key="lr_min_hot")
                 filters["cold_ativo"] = st.checkbox("Excluir Cold Numbers", value=False, key="lr_cold_check")
-                filters["pares_ativo"] = st.checkbox("Pares Fortes", value=False, key="lr_pares_check")
+                filters["pares_ativo"] = st.checkbox("Mín. Pares Fortes", value=False, key="lr_pares_check")
                 if filters["pares_ativo"]:
                     filters["min_pares_fortes"] = st.slider("Mín. pares fortes", 0, 10, 2, key="lr_min_pares")
             quadrants_lr = compute_quadrants(cfg["dezenas_total"], 4)
@@ -1828,15 +1856,18 @@ def main():
             economia_total = (total_orig - final_count) * custo_unit
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             with col_m1:
-                metric_card("Iniciais", f"{total_orig:,}", "Sem filtros")
+                metric_card("Combinações Iniciais", f"{total_orig:,}", "Sem filtros")
             with col_m2:
                 metric_card("Após Filtros", f"{final_count:,}", f"{(1 - final_count/total_orig)*100:.1f}% reduzido" if total_orig > 0 else "")
             with col_m3:
-                metric_card("Reduzidas", f"{total_orig - final_count:,}", "Eliminadas")
+                metric_card("Reduzidas", f"{total_orig - final_count:,}", "Combinações eliminadas")
             with col_m4:
-                metric_card("Economia", f"R$ {economia_total:,.2f}", "Em apostas")
+                metric_card("Economia", f"R$ {economia_total:,.2f}", "Em apostas não feitas")
             if len(steps) > 1:
                 st.plotly_chart(plot_reduction_steps(steps, theme), use_container_width=True)
+                st.markdown("##### 📋 Detalhe por Filtro")
+                df_steps = pd.DataFrame([{"Filtro": s["filtro"], "Restantes": s["restantes"], "Reduzidas": s["reduzidas"], "Redução %": f"{s['redução_pct']:.1f}%", "Economia": f"R$ {s['economia']:,.2f}"} for s in steps])
+                st.dataframe(df_steps, use_container_width=True, hide_index=True)
             if final_count > 0:
                 st.divider()
                 st.markdown(f"#### ✅ {final_count:,} Combinações Finais")
@@ -1845,7 +1876,7 @@ def main():
                     df_final.insert(0, "#", range(1, len(df_final) + 1))
                     st.dataframe(df_final, use_container_width=True, hide_index=True)
                 else:
-                    st.warning(f"Muitas combinações ({final_count:,}). Use mais filtros ou baixe o Excel.")
+                    st.warning(f"Muitas combinações ({final_count:,}) para exibir. Use mais filtros ou baixe o Excel.")
                 excel_lr = export_to_excel(filtered_combos, st.session_state.get("freq", freq), st.session_state.get("delays", delays), strong_pairs_lr, lottery_name)
                 st.download_button(label="📊 Baixar Excel", data=excel_lr, file_name=f"line_reduction_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="download_excel_lr")
                 if HAS_FPDF:
@@ -1853,19 +1884,20 @@ def main():
                     if pdf_lr:
                         st.download_button(label="📄 Baixar PDF", data=pdf_lr, file_name=f"fechamento_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf", mime="application/pdf", key="download_pdf_lr")
                 wa_url_lr = whatsapp_share_url(filtered_combos, lottery_name)
-                st.markdown(f"""<a href="{wa_url_lr}" target="_blank" style='display:inline-block;padding:8px 16px;background:#25D366;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:0.85rem;margin-top:8px;'>💬 WhatsApp</a>""", unsafe_allow_html=True)
+                st.markdown(f"""<a href="{wa_url_lr}" target="_blank" style='display:inline-block;padding:8px 16px;background:#25D366;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:0.85rem;margin-top:8px;'>💬 Compartilhar no WhatsApp</a>""", unsafe_allow_html=True)
                 st.divider()
                 render_caixa_export(filtered_combos, lottery_name, download_key="line_reduction")
             else:
-                st.error("Nenhuma combinação passou nos filtros.")
+                st.error("Nenhuma combinação passou nos filtros. Tente relaxar os critérios.")
 
     with tab_multipla:
         st.header("🎲 Apostas Múltiplas (Desdobramento)")
+        st.markdown("Jogue com **mais dezenas** e veja o custo total, garantia de prêmios e cobertura completa.")
         pick = cfg["dezenas_aposta"]
         custo_unit = cfg.get("custo_aposta", 5.0)
         max_nums = cfg.get("max_dezenas_aposta", min(cfg["dezenas_total"], pick + 10))
         st.markdown("---")
-        st.subheader("📊 Tabela de Custos")
+        st.subheader("📊 Tabela de Custos por Quantidade de Dezenas")
         st.plotly_chart(plot_cost_vs_numbers(cfg, theme), use_container_width=True)
         cost_rows = []
         for n in range(pick, max_nums + 1):
@@ -1874,25 +1906,21 @@ def main():
         st.dataframe(pd.DataFrame(cost_rows), use_container_width=True, hide_index=True)
         st.markdown("---")
         st.subheader("🔧 Montar Desdobramento")
-        col_m1, col_m2, col_m3 = st.columns([2, 1, 1])
+        col_m1, col_m2 = st.columns([2, 1])
         with col_m1:
             n_dezenas = st.slider(f"Quantas dezenas jogar? ({pick} a {max_nums})", min_value=pick, max_value=max_nums, value=pick + 2, key="n_dezenas_multipla")
         with col_m2:
             st.markdown(f"**Custo unitário:** R$ {custo_unit:.2f}")
-        total_bets_possible, total_cost_possible = calculate_desdobramento_cost(n_dezenas, pick, custo_unit)
-        with col_m3:
-            max_bets_for_slider = min(total_bets_possible, 5000)
-            n_apostas_multipla = st.number_input("Qtde de apostas", min_value=1, max_value=int(max_bets_for_slider), value=min(int(total_bets_possible), 50), key="n_apostas_multipla")
-        total_bets_multipla = n_apostas_multipla
-        total_cost_multipla = n_apostas_multipla * custo_unit
+        total_bets_multipla, total_cost_multipla = calculate_desdobramento_cost(n_dezenas, pick, custo_unit)
         col_cm1, col_cm2, col_cm3 = st.columns(3)
         with col_cm1:
             metric_card("Dezenas Jogadas", n_dezenas, f"de {cfg['dezenas_total']} possíveis")
         with col_cm2:
-            metric_card("Total de Apostas", f"{total_bets_multipla:,}", f"de {total_bets_possible:,} possíveis")
+            metric_card("Total de Apostas", f"{total_bets_multipla:,}", f"C({n_dezenas},{pick})")
         with col_cm3:
             metric_card("Custo Total", f"R$ {total_cost_multipla:,.2f}", f"R$ {custo_unit:.2f} × {total_bets_multipla:,}")
         st.markdown("#### 📋 Garantia de Prêmios")
+        st.caption(f"Se você jogar **{n_dezenas} dezenas** (todas as combinações de {pick}), veja o que acontece quando **X de suas dezenas** são sorteadas:")
         coverage = calculate_coverage_table(n_dezenas, pick, cfg["premios"])
         st.plotly_chart(plot_coverage_chart(coverage, pick, cfg["premios"], theme), use_container_width=True)
         coverage_rows = []
@@ -1904,16 +1932,18 @@ def main():
             row["Total apostas"] = r["total_bets"]
             coverage_rows.append(row)
         st.dataframe(pd.DataFrame(coverage_rows), use_container_width=True, hide_index=True)
+        st.caption("Esta tabela mostra **exatamente** quantas apostas terão cada nível de prêmio, dependendo de quantas de suas dezenas forem sorteadas.")
         st.markdown("---")
         st.subheader("🎯 Escolher Dezenas")
+        st.markdown(f"Escolha **{n_dezenas} dezenas** para o desdobramento:")
         col_d1, col_d2 = st.columns([3, 1])
         with col_d1:
-            dezenas_input_multipla = st.text_area(f"Digite {n_dezenas} dezenas ou gere abaixo", value="", height=60, key="dezenas_multipla_input")
+            dezenas_input_multipla = st.text_area(f"Digite {n_dezenas} dezenas separadas por vírgula (ou gere abaixo)", value="", height=60, key="dezenas_multipla_input")
         with col_d2:
             st.markdown("**🎲 Gerar dezenas:**")
-            gerar_tipo = st.selectbox("Tipo", ["Sugeridas", "Aleatórias", "Hot Numbers", "Atrasadas"], key="gerar_tipo_multipla")
+            gerar_tipo = st.selectbox("Tipo de geração", ["Sugeridas (score)", "Aleatórias", "Hot Numbers", "Atrasadas"], key="gerar_tipo_multipla")
             if st.button("Gerar", key="gerar_dezenas_btn", type="primary"):
-                if gerar_tipo == "Sugeridas":
+                if gerar_tipo == "Sugeridas (score)":
                     if "bets" in st.session_state and st.session_state["bets"]:
                         all_nums = [n for bet in st.session_state["bets"] for n in bet]
                         freq_nums = Counter(all_nums).most_common(n_dezenas)
@@ -1947,33 +1977,29 @@ def main():
         except ValueError:
             dezenas_multipla = []
         if len(dezenas_multipla) < pick:
-            st.info(f"Digite ou gere pelo menos **{pick}** dezenas.")
+            st.info(f"Digite ou gere pelo menos **{pick}** dezenas para iniciar o desdobramento.")
         elif len(dezenas_multipla) > max_nums:
-            st.warning(f"Máximo de {max_nums} dezenas para {lottery_name}.")
+            st.warning(f"Máximo de {max_nums} dezenas para {lottery_name}. Você tem {len(dezenas_multipla)}.")
         else:
             if len(dezenas_multipla) != n_dezenas:
                 n_dezenas = len(dezenas_multipla)
-                total_bets_possible, total_cost_possible = calculate_desdobramento_cost(n_dezenas, pick, custo_unit)
-            if total_bets_possible <= 5000:
+                total_bets_multipla, total_cost_multipla = calculate_desdobramento_cost(n_dezenas, pick, custo_unit)
+            st.markdown(f"#### ✅ {total_bets_multipla:,} combinações com {n_dezenas} dezenas")
+            st.markdown(f"**Custo total:** R$ {total_cost_multipla:,.2f}")
+            if total_bets_multipla <= 5000:
                 todas_combos = generate_full_desdobramento(dezenas_multipla, pick)
-                if n_apostas_multipla < len(todas_combos):
-                    random.seed(42)
-                    final_multipla = sorted(random.sample(todas_combos, int(n_apostas_multipla)))
-                else:
-                    final_multipla = todas_combos
-                final_count_multipla = len(final_multipla)
-                st.markdown(f"#### ✅ {final_count_multipla:,} Apostas de {n_dezenas} dezenas")
-                st.markdown(f"**Custo total:** R$ {final_count_multipla * custo_unit:,.2f}")
-                st.markdown("##### Filtros do Line Reduction")
+                st.markdown("##### Aplicar filtros do Line Reduction")
                 usar_filtros_multipla = st.checkbox("Ativar filtros", value=False, key="multipla_filtros_check")
                 if usar_filtros_multipla:
                     filters_multipla = {}
                     col_fm1, col_fm2 = st.columns(2)
                     with col_fm1:
-                        filters_multipla["soma_ativo"] = st.checkbox("Soma", value=False, key="ml_soma_check")
+                        filters_multipla["soma_ativo"] = st.checkbox("Filtro de Soma", value=False, key="ml_soma_check")
                         if filters_multipla["soma_ativo"]:
-                            filters_multipla["soma_min"] = st.number_input("Soma mín.", value=int(np.mean(dezenas_multipla) * pick * 0.7), key="ml_soma_min")
-                            filters_multipla["soma_max"] = st.number_input("Soma máx.", value=int(np.mean(dezenas_multipla) * pick * 1.3), key="ml_soma_max")
+                            soma_min_m = int(np.mean(dezenas_multipla) * pick * 0.7)
+                            soma_max_m = int(np.mean(dezenas_multipla) * pick * 1.3)
+                            filters_multipla["soma_min"] = st.number_input("Soma mín.", value=soma_min_m, key="ml_soma_min")
+                            filters_multipla["soma_max"] = st.number_input("Soma máx.", value=soma_max_m, key="ml_soma_max")
                         filters_multipla["impares_ativo"] = st.checkbox("Ímpar/Par", value=False, key="ml_impares_check")
                         if filters_multipla["impares_ativo"]:
                             filters_multipla["min_impares"] = st.number_input("Mín. ímpares", 0, pick, pick // 2, key="ml_min_imp")
@@ -1991,23 +2017,24 @@ def main():
                             filters_multipla["min_pares_fortes"] = st.slider("Mín. pares", 0, 10, 2, key="ml_min_pares")
                     quadrants_ml = compute_quadrants(cfg["dezenas_total"], 4)
                     strong_pairs_ml = st.session_state.get("strong_pairs", [])
-                    filtered_multipla, steps_multipla = apply_progressive_filters(final_multipla, filters_multipla, freq=st.session_state.get("freq", freq), delays=st.session_state.get("delays", delays), strong_pairs=strong_pairs_ml, hot_set=hot_cold_data["hot_set"], cold_set=hot_cold_data["cold_set"], quadrants=quadrants_ml, custo_unit=custo_unit)
-                    final_multipla_filtrada = filtered_multipla
-                    final_count_multipla_filtrada = len(final_multipla_filtrada)
-                    economia_multipla = (final_count_multipla - final_count_multipla_filtrada) * custo_unit
+                    filtered_multipla, steps_multipla = apply_progressive_filters(todas_combos, filters_multipla, freq=st.session_state.get("freq", freq), delays=st.session_state.get("delays", delays), strong_pairs=strong_pairs_ml, hot_set=hot_cold_data["hot_set"], cold_set=hot_cold_data["cold_set"], quadrants=quadrants_ml, custo_unit=custo_unit)
+                    final_multipla = filtered_multipla
+                    final_count_multipla = len(final_multipla)
+                    economia_multipla = (len(todas_combos) - final_count_multipla) * custo_unit
                     col_em1, col_em2, col_em3, col_em4 = st.columns(4)
                     with col_em1:
-                        metric_card("Iniciais", f"{final_count_multipla:,}", "Antes")
+                        metric_card("Combinações Iniciais", f"{len(todas_combos):,}", "Sem filtros")
                     with col_em2:
-                        metric_card("Após Filtros", f"{final_count_multipla_filtrada:,}", f"{(1-final_count_multipla_filtrada/final_count_multipla)*100:.1f}%" if final_count_multipla > 0 else "")
+                        metric_card("Após Filtros", f"{final_count_multipla:,}", f"{(1 - final_count_multipla/len(todas_combos))*100:.1f}% reduzido" if len(todas_combos) > 0 else "")
                     with col_em3:
-                        metric_card("Reduzidas", f"{final_count_multipla - final_count_multipla_filtrada:,}", "")
+                        metric_card("Reduzidas", f"{len(todas_combos) - final_count_multipla:,}", "Eliminadas")
                     with col_em4:
-                        metric_card("Economia", f"R$ {economia_multipla:,.2f}", "")
+                        metric_card("Economia", f"R$ {economia_multipla:,.2f}", "Em apostas não feitas")
                     if len(steps_multipla) > 1:
                         st.plotly_chart(plot_reduction_steps(steps_multipla, theme), use_container_width=True)
-                    final_multipla = final_multipla_filtrada
-                    final_count_multipla = final_count_multipla_filtrada
+                else:
+                    final_multipla = todas_combos
+                    final_count_multipla = len(final_multipla)
                 st.divider()
                 st.markdown(f"#### 📋 {final_count_multipla:,} Apostas Finais")
                 if final_count_multipla <= 500:
@@ -2015,7 +2042,7 @@ def main():
                     df_multipla.insert(0, "#", range(1, len(df_multipla) + 1))
                     st.dataframe(df_multipla, use_container_width=True, hide_index=True)
                 else:
-                    st.warning(f"{final_count_multipla:,} apostas — use o Excel.")
+                    st.warning(f"{final_count_multipla:,} apostas — use o Excel para visualizar.")
                 st.markdown("##### 📥 Exportar")
                 col_ex1, col_ex2, col_ex3 = st.columns(3)
                 with col_ex1:
@@ -2032,7 +2059,54 @@ def main():
                 st.divider()
                 render_caixa_export(final_multipla, lottery_name, download_key="multipla")
             else:
-                st.error(f"{total_bets_possible:,} combinações é muito grande. Use menos dezenas ou menos apostas.")
+                st.error(f"Total de {total_bets_multipla:,} apostas é muito grande para gerar. Use menos dezenas ou aplique filtros.")
+
+    with tab_mandel:
+        st.header("🎯 Estratégia Mandel (Cobertura Combinatória)")
+        st.markdown("""
+        **Stefan Mandel** ganhou a loteria 14 vezes usando matemática pura. O método dele tem 2 fases:
+
+        1. **Combinatorial Condensation** — reduzir o universo de combinações usando filtros estatísticos
+        2. **Buying the Pot** — comprar TODAS as combinações quando o prêmio supera o custo total
+
+        ⚠️ **Aviso:** A Caixa limita apostas e o prêmio pode ser rateado. Esta é uma análise educacional.
+        """)
+        mandel_data = calculate_mandel_coverage(lottery_name, cfg)
+        st.subheader("💰 Custo para Cobrir Todas as Combinações")
+        col_m1, col_m2, col_m3 = st.columns(3)
+        with col_m1:
+            metric_card("Combinações Totais", f"{mandel_data['total_combos']:,}", f"C({mandel_data['total']},{mandel_data['pick']})")
+        with col_m2:
+            metric_card("Custo por Aposta", f"R$ {mandel_data['custo_unit']:.2f}", "")
+        with col_m3:
+            metric_card("Custo Total", f"R$ {mandel_data['custo_total']:,.0f}", "Para cobrir tudo")
+        st.plotly_chart(plot_mandel_cost_analysis(cfg, theme), use_container_width=True)
+        st.divider()
+        st.subheader("🎯 Garantia de Prêmios (Cobertura Mínima)")
+        st.markdown("Quantas combinações são necessárias para **garantir** cada faixa de prêmio?")
+        pick = cfg["dezenas_aposta"]
+        max_nums = cfg.get("max_dezenas_aposta", min(cfg["dezenas_total"], pick + 10))
+        garantia_rows = []
+        for n in range(pick, max_nums + 1):
+            row = {"Dezenas": n}
+            for target in sorted(cfg["premios"].keys(), reverse=True):
+                if target <= pick:
+                    g = calculate_guarantee_combinations(n, pick, target)
+                    row[f"Garantir {cfg['premios'][target]}"] = f"{g['min_bilhetes_teorico']:,.0f}"
+            garantia_rows.append(row)
+        st.dataframe(pd.DataFrame(garantia_rows), use_container_width=True, hide_index=True)
+        st.caption("Valores são o **limite teórico mínimo** (lower bound). Na prática, o número real pode ser maior.")
+        st.divider()
+        st.subheader("🔬 Condensação Combinatória (Redução de Combinações)")
+        st.info("""
+        **Como nosso motor aplica a condensação:**
+        - **Gap Analysis + Markov** → identifica dezenas com maior probabilidade (o "5 de 6" de Mandel)
+        - **Line Reduction** → reduz combinações com filtros (soma, ímpar/par, consecutivos, quadrantes)
+        - **Hot/Cold Numbers** → prioriza dezenas quentes
+        - **Score multivariado** → combina todos os fatores
+
+        Use a aba **Line Reduction** para aplicar a condensação, ou a aba **Apostas Múltiplas** para desdobramento.
+        """)
 
     with tab_padroes:
         st.header("📊 Padrões Comportamentais")
@@ -2056,10 +2130,10 @@ def main():
         with col_hc2:
             st.markdown(f"**🔵 Cold Numbers:** {', '.join(str(n) for n in sorted(hot_cold_data['cold_set']))}")
         st.divider()
-        st.subheader("⚖️ Janela Deslizante")
+        st.subheader("⚖️ Janela Deslizante (Ponderação Exponencial)")
         freq_simple = freq
         st.plotly_chart(plot_weighted_vs_simple(freq_simple, freq_weighted, cfg["dezenas_total"], theme), use_container_width=True)
-        st.caption(f"Fator de decaimento: **{decay_factor}**")
+        st.caption(f"Fator de decaimento: **{decay_factor}** — sorteios mais recentes têm peso exponencialmente maior.")
         col_w1, col_w2 = st.columns(2)
         with col_w1:
             top_weighted = sorted(freq_weighted.items(), key=lambda x: x[1], reverse=True)[:10]
@@ -2068,55 +2142,59 @@ def main():
             top_simple = sorted(freq_simple.items(), key=lambda x: x[1], reverse=True)[:10]
             st.markdown("**Top 10 (Simples):** " + ", ".join(f"{n}({v})" for n, v in top_simple))
         st.divider()
-        st.subheader("📏 Gap Analysis")
+        st.subheader("📏 Gap Analysis (Análise de Intervalos)")
         st.plotly_chart(plot_gap_analysis(gap_data, cfg["dezenas_total"], theme), use_container_width=True)
         overdue_nums = [n for n in range(1, cfg["dezenas_total"] + 1) if gap_data[n]["overdue"]]
         if overdue_nums:
-            st.markdown(f"**🔴 Dezenas Overdue:** {', '.join(str(n) for n in sorted(overdue_nums))}")
+            st.markdown(f"**🔴 Dezenas Overdue (gap > média + 2σ):** {', '.join(str(n) for n in sorted(overdue_nums))}")
+            st.caption("Dezenas overdue recebem +20% no score do gerador.")
         col_gap1, col_gap2 = st.columns(2)
         with col_gap1:
             st.markdown("##### 📊 Tabela de Gaps")
-            gap_rows = [{"Dezena": n, "Gap Atual": gap_data[n]["current_gap"], "Média": gap_data[n]["mean_gap"], "Z-Score": gap_data[n]["z_score"], "Overdue": "🔴" if gap_data[n]["overdue"] else "", "Prob %": gap_data[n]["prob_next"]} for n in range(1, cfg["dezenas_total"] + 1)]
-            st.dataframe(pd.DataFrame(gap_rows).sort_values("Z-Score", ascending=False).reset_index(drop=True), use_container_width=True, hide_index=True)
+            gap_rows = [{"Dezena": n, "Gap Atual": gap_data[n]["current_gap"], "Média": gap_data[n]["mean_gap"], "σ": gap_data[n]["std_gap"], "Z-Score": gap_data[n]["z_score"], "Overdue": "🔴" if gap_data[n]["overdue"] else "", "Prob %": gap_data[n]["prob_next"]} for n in range(1, cfg["dezenas_total"] + 1)]
+            df_gaps = pd.DataFrame(gap_rows).sort_values("Z-Score", ascending=False).reset_index(drop=True)
+            st.dataframe(df_gaps, use_container_width=True, hide_index=True)
         with col_gap2:
+            st.markdown("##### 🎯 Ranking de Probabilidade")
             st.plotly_chart(plot_prob_ranking(gap_data, cfg["dezenas_total"], theme), use_container_width=True)
         st.markdown("##### 🔍 Timeline Individual")
-        selected_num = st.selectbox("Selecione uma dezena", range(1, cfg["dezenas_total"] + 1), key="gap_timeline_select")
+        selected_num = st.selectbox("Selecione uma dezena para ver o timeline", range(1, cfg["dezenas_total"] + 1), key="gap_timeline_select")
         st.plotly_chart(plot_gap_timeline(gap_data, selected_num, len(draws_matrix), theme), use_container_width=True)
         g_sel = gap_data[selected_num]
-        st.caption(f"Dezena {selected_num}: média a cada {g_sel['mean_gap']:.1f} | gap: {g_sel['current_gap']} | z: {g_sel['z_score']} | prob: {g_sel['prob_next']}%")
+        st.caption(f"Dezena {selected_num}: média a cada {g_sel['mean_gap']:.1f} concursos | gap atual: {g_sel['current_gap']} | z-score: {g_sel['z_score']} | prob: {g_sel['prob_next']}%")
         st.divider()
-        st.subheader("🔗 Modelo de Markov")
+        st.subheader("🔗 Modelo de Markov (Cadeia de Transição)")
         if markov_data:
-            st.markdown(f"**Último sorteio:** {', '.join(str(n) for n in markov_data['last_draw'])}")
-            st.caption(f"{markov_data['n_transitions']:,} transições")
+            st.markdown(f"**Último sorteio analisado:** {', '.join(str(n) for n in markov_data['last_draw'])}")
+            st.caption(f"Baseado em {markov_data['n_transitions']:,} transições entre sorteios consecutivos.")
             col_mk1, col_mk2 = st.columns([2, 1])
             with col_mk1:
                 st.plotly_chart(plot_markov_heatmap(markov_data, cfg["dezenas_total"], theme), use_container_width=True)
             with col_mk2:
-                st.markdown("##### 🎯 Top 15")
+                st.markdown("##### 🎯 Top 15 por Markov")
                 top_mk = sorted(markov_data["next_probs"].items(), key=lambda x: x[1], reverse=True)[:15]
                 st.dataframe(pd.DataFrame(top_mk, columns=["Dezena", "Prob %"]), use_container_width=True, hide_index=True)
+                st.caption("Dezenas com P > 30% recebem +10% no score do gerador.")
             st.plotly_chart(plot_markov_ranking(markov_data, cfg["dezenas_total"], theme), use_container_width=True)
 
     with tab_backtest:
-        st.header("🔬 Backtesting & ROI")
+        st.header("🔬 Backtesting & Análise de ROI")
         if "bets" not in st.session_state or not st.session_state["bets"]:
             st.warning("Gere apostas primeiro na aba **Gerador**.")
         else:
             bets = st.session_state["bets"]
-            st.info(f"**{len(bets)} apostas** contra **{n_draws} sorteios**")
+            st.info(f"**{len(bets)} apostas** contra **{n_draws} sorteios** do histórico.")
             col_bt1, col_bt2 = st.columns([1, 1])
             with col_bt1:
                 if st.button("🧪 Testar no Histórico", type="primary", key="testar_historico_button"):
-                    with st.spinner("Executando backtesting..."):
+                    with st.spinner("Executando backtesting com cálculo de ROI..."):
                         results, df_detail, roi_data = run_backtest(bets, draws_matrix, lottery_name)
                         st.session_state["backtest_results"] = results
                         st.session_state["backtest_detail"] = df_detail
                         st.session_state["backtest_roi"] = roi_data
             with col_bt2:
                 if st.button("📊 Comparar Estratégias", type="secondary", key="comparar_estrategias_button"):
-                    with st.spinner("Comparando..."):
+                    with st.spinner("Comparando as 4 estratégias..."):
                         df_comp = compare_strategies(lottery_name, draws_matrix, n_bets=n_bets, weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs, trevos_matrix=trevos_matrix, meses_series=meses_series, decay=decay_factor)
                         st.session_state["df_comparacao"] = df_comp
             if "backtest_results" in st.session_state:
@@ -2125,39 +2203,56 @@ def main():
                 roi_data = st.session_state.get("backtest_roi", {})
                 st.plotly_chart(plot_backtest_results(results, theme), use_container_width=True)
                 if roi_data:
-                    st.markdown("### 💰 ROI")
+                    st.markdown("### 💰 Análise Financeira (ROI)")
                     col_r1, col_r2, col_r3, col_r4 = st.columns(4)
                     with col_r1:
-                        metric_card("Custo Total", f"R$ {roi_data['custo_total']:,.2f}", f"{roi_data['n_bets']}ap × {roi_data['n_concursos']}conc")
+                        metric_card("Custo Total", f"R$ {roi_data['custo_total']:,.2f}", f"{roi_data['n_bets']} ap x {roi_data['n_concursos']} concursos")
                     with col_r2:
-                        metric_card("Prêmios Est.", f"R$ {roi_data['premios_total']:,.2f}", "Média histórica")
+                        metric_card("Prêmios Estimados", f"R$ {roi_data['premios_total']:,.2f}", "Valores médios históricos")
                     with col_r3:
                         roi_val = roi_data['roi_pct']
                         roi_color = "#28a745" if roi_val >= 0 else "#dc3545"
-                        st.markdown(f"""<div class="metric-card"><div class="metric-label">ROI</div><div class="metric-value" style="color:{roi_color};">{roi_val:+.1f}%</div><div class="metric-sub">Retorno</div></div>""", unsafe_allow_html=True)
+                        st.markdown(f"""<div class="metric-card"><div class="metric-label">ROI</div><div class="metric-value" style="color:{roi_color};">{roi_val:+.1f}%</div><div class="metric-sub">Retorno sobre investimento</div></div>""", unsafe_allow_html=True)
                     with col_r4:
                         lucro = roi_data['lucro_liquido']
                         lucro_color = "#28a745" if lucro >= 0 else "#dc3545"
-                        st.markdown(f"""<div class="metric-card"><div class="metric-label">Lucro/Prej.</div><div class="metric-value" style="color:{lucro_color};">R$ {lucro:,.2f}</div><div class="metric-sub">Prêmios - Custo</div></div>""", unsafe_allow_html=True)
-                df_res = pd.DataFrame([{"Prêmio": k, "Ocorrências": v} for k, v in results.items() if v > 0])
-                if not df_res.empty:
-                    st.dataframe(df_res.sort_values("Ocorrências", ascending=False).reset_index(drop=True), use_container_width=True, hide_index=True)
-                if not df_detail.empty:
-                    st.dataframe(df_detail.sort_values(["Acertos","Concurso"], ascending=[False,True]).reset_index(drop=True).head(50), use_container_width=True, hide_index=True)
+                        st.markdown(f"""<div class="metric-card"><div class="metric-label">Lucro / Prejuízo</div><div class="metric-value" style="color:{lucro_color};">R$ {lucro:,.2f}</div><div class="metric-sub">Prêmios - Custo</div></div>""", unsafe_allow_html=True)
+                    st.caption("⚠️ Valores de prêmios são **estimativas médias** baseadas em sorteios históricos. Prêmios reais variam conforme acúmulo e número de ganhadores.")
+                col_b1, col_b2 = st.columns([1, 2])
+                with col_b1:
+                    st.subheader("📊 Resumo de Prêmios")
+                    df_res = pd.DataFrame([{"Prêmio": k, "Ocorrências": v} for k, v in results.items() if v > 0])
+                    if not df_res.empty:
+                        st.dataframe(df_res.sort_values("Ocorrências", ascending=False).reset_index(drop=True), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Nenhum prêmio encontrado.")
+                with col_b2:
+                    st.subheader("📋 Detalhamento")
+                    if not df_detail.empty:
+                        st.dataframe(df_detail.sort_values(["Acertos", "Concurso"], ascending=[False, True]).reset_index(drop=True).head(50), use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Nenhum prêmio encontrado no histórico.")
             if "df_comparacao" in st.session_state:
                 st.divider()
-                st.markdown("### ⚔️ Comparação de Estratégias")
+                st.markdown("### ⚔️ Comparação de Estratégias (ROI)")
                 df_comp = st.session_state["df_comparacao"]
                 df_comp_display = df_comp.copy()
                 df_comp_display["Custo Total (R$)"] = df_comp_display["Custo Total (R$)"].apply(lambda x: f"R$ {x:,.2f}")
                 df_comp_display["Prêmios Total (R$)"] = df_comp_display["Prêmios Total (R$)"].apply(lambda x: f"R$ {x:,.2f}")
+                df_comp_display["Lucro/Prejuízo (R$)"] = df_comp_display["Lucro/Prejuízo (R$)"].apply(lambda x: f"R$ {x:,.2f}")
                 df_comp_display["ROI %"] = df_comp_display["ROI %"].apply(lambda x: f"{x:+.1f}%")
                 st.dataframe(df_comp_display, use_container_width=True, hide_index=True)
+                fig_comp = go.Figure()
+                colors = ["#28a745" if v >= 0 else "#dc3545" for v in df_comp["ROI %"]]
+                fig_comp.add_trace(go.Bar(x=df_comp["Estratégia"], y=df_comp["ROI %"], marker_color=colors, text=[f"{v:+.1f}%" for v in df_comp["ROI %"]], textposition="auto"))
+                fig_comp.update_layout(title="ROI por Estratégia (%)", xaxis_title="Estratégia", yaxis_title="ROI %", template="plotly_white", height=350, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+                st.plotly_chart(fig_comp, use_container_width=True)
+                st.caption("Verde = ROI positivo (lucro). Vermelho = ROI negativo (prejuízo). Prêmios estimados com valores médios históricos.")
 
     with tab_dados:
         st.header("📋 Dados do Histórico")
         fonte = st.session_state.get("data_source", "mock/upload")
-        st.caption(f"Fonte: {'API Caixa' if fonte == 'caixa' else 'Upload/Mock'} | {len(df_data)} sorteios")
+        st.caption(f"Fonte: {'API Caixa (real)' if fonte == 'caixa' else 'Upload/Mock'} | {len(df_data)} sorteios")
         st.dataframe(df_data.head(100), use_container_width=True)
         if st.checkbox("Mostrar estatísticas descritivas", key="mostrar_estatisticas_check"):
             st.dataframe(df_data.describe(), use_container_width=True)
@@ -2165,18 +2260,18 @@ def main():
     with tab_assistente:
         st.header("🤖 Assistente IA")
         st.markdown("Pergunte sobre as análises, apostas geradas, estratégias e padrões.")
-        st.caption("⚠️ Este assistente usa os dados calculados pelo motor.")
+        st.caption("⚠️ Este assistente usa os dados calculados pelo motor. Não aumenta chances reais de ganhar.")
         use_openai = False
         api_key_input = None
         if HAS_OPENAI:
             col_ai1, col_ai2 = st.columns([3, 1])
             with col_ai2:
-                use_openai = st.checkbox("Usar OpenAI", value=False, key="use_openai_check")
+                use_openai = st.checkbox("Usar OpenAI (API Key)", value=False, key="use_openai_check")
             if use_openai:
                 with col_ai1:
-                    api_key_input = st.text_input("API Key OpenAI", type="password", key="openai_key_input")
+                    api_key_input = st.text_input("OpenAI API Key", type="password", key="openai_key_input")
         else:
-            st.info("💡 Modo local. Instale `openai` para IA avançada.")
+            st.info("💡 Modo local ativo. Instale `openai` para respostas com IA generativa avançada.")
         context_data = {
             "lottery_name": lottery_name, "freq": freq, "delays": delays, "gap_data": gap_data,
             "hot_cold_data": hot_cold_data, "cycle": cycle, "markov_data": markov_data, "alerts": alerts,
@@ -2185,7 +2280,7 @@ def main():
         }
         full_context = build_analysis_context(lottery_name, cfg, draws_matrix, freq, delays, gap_data, hot_cold_data, cycle, markov_data, alerts, st.session_state.get("bets"), st.session_state.get("scores_list"), st.session_state.get("backtest_roi"))
         st.markdown("##### 💡 Perguntas sugeridas:")
-        suggestions = ["Por que esses números?", "Mais atrasadas?", "Mais frequentes?", "Probabilidades Markov", "Status do ciclo", "Alertas ativos", "Resultado do ROI", "Comparar estratégias"]
+        suggestions = ["Por que esses números foram escolhidos?", "Quais as dezenas mais atrasadas?", "Quais as mais frequentes?", "Probabilidades do Markov", "Status do ciclo", "Alertas ativos", "Resultado do ROI", "Comparar estratégias"]
         cols_sug = st.columns(4)
         for i, sug in enumerate(suggestions):
             with cols_sug[i % 4]:
@@ -2204,7 +2299,10 @@ def main():
                 st.markdown(pending)
             with st.chat_message("assistant"):
                 with st.spinner("Analisando..."):
-                    response = openai_assistant_response(pending, full_context, api_key_input) if (use_openai and api_key_input) else local_assistant_response(pending, context_data)
+                    if use_openai and api_key_input:
+                        response = openai_assistant_response(pending, full_context, api_key_input)
+                    else:
+                        response = local_assistant_response(pending, context_data)
                 st.markdown(response)
             st.session_state["chat_history"].append({"role": "assistant", "content": response})
         user_input = st.chat_input("Digite sua pergunta...")
@@ -2214,7 +2312,10 @@ def main():
                 st.markdown(user_input)
             with st.chat_message("assistant"):
                 with st.spinner("Analisando..."):
-                    response = openai_assistant_response(user_input, full_context, api_key_input) if (use_openai and api_key_input) else local_assistant_response(user_input, context_data)
+                    if use_openai and api_key_input:
+                        response = openai_assistant_response(user_input, full_context, api_key_input)
+                    else:
+                        response = local_assistant_response(user_input, context_data)
                 st.markdown(response)
             st.session_state["chat_history"].append({"role": "assistant", "content": response})
         if st.session_state["chat_history"]:
@@ -2225,129 +2326,6 @@ def main():
     st.divider()
     st.markdown(f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA · PDF · WhatsApp · IA · Desdobramento · {datetime.now().year} · Jogue com responsabilidade · Ligue 188 (CVV).</div>", unsafe_allow_html=True)
     render_lgpd_consent()
-
-with tab_mandel:
-    st.header("🎯 Estratégia Mandel (Cobertura Combinatória)")
-    st.markdown("""
-    **Stefan Mandel** ganhou a loteria 14 vezes usando matemática pura. O método dele tem 2 fases:
-    
-    1. **Combinatorial Condensation** — reduzir o universo de combinações usando filtros estatísticos
-    2. **Buying the Pot** — comprar TODAS as combinações quando o prêmio supera o custo total
-    
-    ⚠️ **Aviso:** A Caixa limita apostas e o prêmio pode ser rateado. Esta é uma análise educacional.
-    """)
-    
-    # Análise de custo total
-    mandel_data = calculate_mandel_coverage(lottery_name, cfg)
-    st.subheader("💰 Custo para Cobrir Todas as Combinações")
-    col_m1, col_m2, col_m3 = st.columns(3)
-    with col_m1:
-        metric_card("Combinações Totais", f"{mandel_data['total_combos']:,}", f"C({mandel_data['total']},{mandel_data['pick']})")
-    with col_m2:
-        metric_card("Custo por Aposta", f"R$ {mandel_data['custo_unit']:.2f}", "")
-    with col_m3:
-        metric_card("Custo Total", f"R$ {mandel_data['custo_total']:,.0f}", "Para cobrir tudo")
-    
-    st.plotly_chart(plot_mandel_cost_analysis(cfg, theme), use_container_width=True)
-    
-    st.divider()
-    st.subheader("🎯 Garantia de Prêmios (Cobertura Mínima)")
-    st.markdown("Quantas combinações são necessárias para **garantir** cada faixa de prêmio?")
-    
-    # Tabela de garantia
-    pick = cfg["dezenas_aposta"]
-    max_nums = cfg.get("max_dezenas_aposta", min(cfg["dezenas_total"], pick + 10))
-    
-    # Para cada quantidade de dezenas jogadas
-    garantia_rows = []
-    for n in range(pick, max_nums + 1):
-        row = {"Dezenas": n}
-        for target in sorted(cfg["premios"].keys(), reverse=True):
-            if target &lt;= pick:
-                g = calculate_guarantee_combinations(n, pick, target)
-                row[f"Garantir {cfg['premios'][target]}"] = f"{g['min_bilhetes_teorico']:,.0f}"
-        garantia_rows.append(row)
-    
-    st.dataframe(pd.DataFrame(garantia_rows), use_container_width=True, hide_index=True)
-    st.caption("Valores são o **limite teórico mínimo** (lower bound). Na prática, o número real pode ser maior.")
-    
-    st.divider()
-    st.subheader("🔬 Condensação Combinatória (Redução de Combinações)")
-    st.markdown("""
-    O método de Mandel reduzia o universo de combinações prevendo **5 de 6 números**.
-    Nosso motor faz algo similar com os filtros estatísticos:
-    """)
-    
-    # Mostrar como os filtros reduzem
-    st.info("""
-    **Como nosso motor aplica a condensação:**
-    - **Gap Analysis + Markov** → identifica dezenas com maior probabilidade (o "5 de 6" de Mandel)
-    - **Line Reduction** → reduz combinações com filtros (soma, ímpar/par, consecutivos, quadrantes)
-    - **Hot/Cold Numbers** → prioriza dezenas quentes
-    - **Score multivariado** → combina todos os fatores
-    
-    Use a aba **Line Reduction** para aplicar a condensação, ou a aba **Apostas Múltiplas** para desdobramento.
-    """)
-
-def plot_cost_vs_numbers(cfg, theme):
-    from math import comb
-    pick = cfg["dezenas_aposta"]
-    custo_unit = cfg.get("custo_aposta", 5.0)
-    max_nums = cfg.get("max_dezenas_aposta", min(cfg["dezenas_total"], pick + 10))
-    nums = list(range(pick, max_nums + 1))
-    costs = [comb(n, pick) * custo_unit for n in nums]
-    bets = [comb(n, pick) for n in nums]
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=[f"{n} dezenas" for n in nums], y=costs,
-        marker_color=theme["accent"],
-        text=[f"R$ {c:,.2f}\n({b} apostas)" for c, b in zip(costs, bets)],
-        textposition="auto"))
-    fig.update_layout(title=f"Custo do Desdobramento — {pick}+ dezenas (R$ {custo_unit:.2f}/aposta)",
-        xaxis_title="Dezenas", yaxis_title="Custo total (R$)",
-        template="plotly_white", height=400,
-        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
-        font=dict(color=theme["text"]))
-    return fig
-
-def plot_coverage_chart(coverage_data, pick, premios, theme):
-    acertadas = [r["acertadas"] for r in coverage_data]
-    fig = go.Figure()
-    colors = ["#FFD700", "#28a745", "#17a2b8", "#6c757d"]
-    for idx, t in enumerate(sorted(premios.keys(), reverse=True)):
-        vals = [r.get(f"{t}_count", 0) for r in coverage_data]
-        if any(v > 0 for v in vals):
-            fig.add_trace(go.Bar(x=acertadas, y=vals, name=premios[t],
-                marker_color=colors[idx % len(colors)], text=vals, textposition="auto"))
-    fig.update_layout(title="Garantia de Prêmios", xaxis_title="Se X dezenas forem sorteadas",
-        yaxis_title="Apostas premiadas", template="plotly_white", height=400, barmode="group",
-        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
-    return fig
-
-def calculate_coverage_table(n_numbers, pick, premios):
-    from math import comb
-    coverage = []
-    for j in range(pick, n_numbers + 1):
-        row = {"acertadas": j}
-        total_bets = 0
-        for t in range(pick, max(0, j - (n_numbers - pick)) - 1, -1):
-            if t > j or t > pick:
-                continue
-            count = comb(j, t) * comb(n_numbers - j, pick - t)
-            row[f"{t}_count"] = count
-            row[f"{t}_label"] = premios.get(t, f"{t} acertos")
-            total_bets += count
-        row["total_bets"] = total_bets
-        coverage.append(row)
-    return coverage
-
-def calculate_desdobramento_cost(n_numbers, pick, custo_unit):
-    from math import comb
-    total_bets = comb(n_numbers, pick)
-    return total_bets, total_bets * custo_unit
-
-def generate_full_desdobramento(numbers, pick):
-    import itertools
-    return [sorted(combo) for combo in itertools.combinations(sorted(numbers), pick)]
 
 if __name__ == "__main__":
     main()
