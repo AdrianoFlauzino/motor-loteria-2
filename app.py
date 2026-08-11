@@ -1432,6 +1432,96 @@ Seja direto, técnico e objetivo. Use os dados fornecidos."""
     except Exception as e:
         return f"Erro ao consultar IA: {e}. Verifique sua API key."
 
+def calculate_mandel_coverage(lottery_name, cfg):
+    """Calcula o custo total para cobrir todas as combinações (Buying the Pot)"""
+    from math import comb
+    total = cfg["dezenas_total"]
+    pick = cfg["dezenas_aposta"]
+    custo = cfg["custo_aposta"]
+    
+    # Combinações totais
+    if cfg.get("tem_trevos"):
+        total_combos = comb(total, pick) * comb(cfg["trevos_total"], cfg["trevos_aposta"])
+    elif cfg.get("tem_mes"):
+        total_combos = comb(total, pick) * cfg["meses_total"]
+    else:
+        total_combos = comb(total, pick)
+    
+    custo_total = total_combos * custo
+    
+    return {
+        "total_combos": total_combos,
+        "custo_total": custo_total,
+        "custo_unit": custo,
+        "pick": pick,
+        "total": total,
+    }
+
+def calculate_guarantee_combinations(n_numbers, pick, target_hits):
+    """Calcula quantas combinações são necessárias para GARANTIR um prêmio de target_hits acertos
+    usando o conceito de cobertura combinatória (Mandel)"""
+    from math import comb
+    # Para garantir target_hits acertos jogando n_numbers dezenas,
+    # precisamos de todas as combinações de pick números
+    # A cobertura mínima é C(n_numbers, pick) / C(n_numbers - target_hits, pick - target_hits)
+    # Mas a garantia real usa o conceito de "lottery covering design"
+    # Fórmula simplificada: para garantir pelo menos target_hits acertos,
+    # o número mínimo de bilhetes é C(n_numbers, pick) / C(n_numbers, target_hits) * C(pick, target_hits)
+    total_combos = comb(n_numbers, pick)
+    # Cada bilhete cobre C(pick, target_hits) combinações de target_hits
+    # Total de combinações de target_hits possíveis: C(n_numbers, target_hits)
+    cobertura_por_bilhete = comb(pick, target_hits)
+    total_target = comb(n_numbers, target_hits)
+    # Número mínimo teórico (lower bound)
+    min_bilhetes = total_target / cobertura_por_bilhete
+    return {
+        "total_combos": total_combos,
+        "min_bilhetes_teorico": min_bilhetes,
+        "cobertura_por_bilhete": cobertura_por_bilhete,
+        "total_target": total_target,
+    }
+
+def plot_mandel_cost_analysis(cfg, theme):
+    """Gráfico mostrando custo total vs prêmio acumulado"""
+    from math import comb
+    total = cfg["dezenas_total"]
+    pick = cfg["dezenas_aposta"]
+    custo = cfg["custo_aposta"]
+    
+    # Combinações totais
+    if cfg.get("tem_trevos"):
+        total_combos = comb(total, pick) * comb(cfg["trevos_total"], cfg["trevos_aposta"])
+    elif cfg.get("tem_mes"):
+        total_combos = comb(total, pick) * cfg["meses_total"]
+    else:
+        total_combos = comb(total, pick)
+    
+    custo_total = total_combos * custo
+    
+    # Prêmios estimados para comparação
+    premios = PREMIOS_ESTIMADOS.get(cfg.get("api_slug", ""), {})
+    # Usar o prêmio principal
+    premio_principal = 0
+    for k, v in PREMIOS_ESTIMADOS.items():
+        if k == cfg.get("api_slug", ""):
+            premio_principal = max(v.values()) if v else 0
+    
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=["Custo Total (todas combinações)", "Prêmio Principal Estimado"],
+        y=[custo_total, premio_principal],
+        marker_color=[theme["accent"], "#FFD700"],
+        text=[f"R$ {custo_total:,.0f}", f"R$ {premio_principal:,.0f}"],
+        textposition="auto",
+    ))
+    fig.update_layout(
+        title=f"Análise Mandel — {cfg.get('api_slug', '').upper()}",
+        yaxis_title="Valor (R$)",
+        template="plotly_white", height=400,
+        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"],
+        font=dict(color=theme["text"]),
+    )
+    return fig
 def main():
     st.set_page_config(page_title="Motor Analítico de Loterias", page_icon="🎲", layout="wide")
     apply_theme_css()
@@ -1536,9 +1626,9 @@ def main():
 
     st.divider()
 
-    tab_gerador, tab_conferidor, tab_fechamento, tab_multipla, tab_padroes, tab_backtest, tab_dados, tab_assistente = st.tabs([
-        "🎰 Gerador", "✅ Conferidor", "🔢 Line Reduction", "🎲 Apostas Múltiplas", "📊 Padrões", "🔬 Backtesting", "📋 Dados", "🤖 Assistente IA"
-    ])
+   tab_gerador, tab_conferidor, tab_fechamento, tab_multipla, tab_mandel, tab_padroes, tab_backtest, tab_dados, tab_assistente = st.tabs([
+    "🎰 Gerador", "✅ Conferidor", "🔢 Line Reduction", "🎲 Apostas Múltiplas", "🎯 Estratégia Mandel", "📊 Padrões", "🔬 Backtesting", "📋 Dados", "🤖 Assistente IA"
+])
 
     with tab_gerador:
         st.header("🎰 Gerador de Apostas Otimizado")
@@ -2135,6 +2225,69 @@ def main():
     st.divider()
     st.markdown(f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA · PDF · WhatsApp · IA · Desdobramento · {datetime.now().year} · Jogue com responsabilidade · Ligue 188 (CVV).</div>", unsafe_allow_html=True)
     render_lgpd_consent()
+
+with tab_mandel:
+    st.header("🎯 Estratégia Mandel (Cobertura Combinatória)")
+    st.markdown("""
+    **Stefan Mandel** ganhou a loteria 14 vezes usando matemática pura. O método dele tem 2 fases:
+    
+    1. **Combinatorial Condensation** — reduzir o universo de combinações usando filtros estatísticos
+    2. **Buying the Pot** — comprar TODAS as combinações quando o prêmio supera o custo total
+    
+    ⚠️ **Aviso:** A Caixa limita apostas e o prêmio pode ser rateado. Esta é uma análise educacional.
+    """)
+    
+    # Análise de custo total
+    mandel_data = calculate_mandel_coverage(lottery_name, cfg)
+    st.subheader("💰 Custo para Cobrir Todas as Combinações")
+    col_m1, col_m2, col_m3 = st.columns(3)
+    with col_m1:
+        metric_card("Combinações Totais", f"{mandel_data['total_combos']:,}", f"C({mandel_data['total']},{mandel_data['pick']})")
+    with col_m2:
+        metric_card("Custo por Aposta", f"R$ {mandel_data['custo_unit']:.2f}", "")
+    with col_m3:
+        metric_card("Custo Total", f"R$ {mandel_data['custo_total']:,.0f}", "Para cobrir tudo")
+    
+    st.plotly_chart(plot_mandel_cost_analysis(cfg, theme), use_container_width=True)
+    
+    st.divider()
+    st.subheader("🎯 Garantia de Prêmios (Cobertura Mínima)")
+    st.markdown("Quantas combinações são necessárias para **garantir** cada faixa de prêmio?")
+    
+    # Tabela de garantia
+    pick = cfg["dezenas_aposta"]
+    max_nums = cfg.get("max_dezenas_aposta", min(cfg["dezenas_total"], pick + 10))
+    
+    # Para cada quantidade de dezenas jogadas
+    garantia_rows = []
+    for n in range(pick, max_nums + 1):
+        row = {"Dezenas": n}
+        for target in sorted(cfg["premios"].keys(), reverse=True):
+            if target &lt;= pick:
+                g = calculate_guarantee_combinations(n, pick, target)
+                row[f"Garantir {cfg['premios'][target]}"] = f"{g['min_bilhetes_teorico']:,.0f}"
+        garantia_rows.append(row)
+    
+    st.dataframe(pd.DataFrame(garantia_rows), use_container_width=True, hide_index=True)
+    st.caption("Valores são o **limite teórico mínimo** (lower bound). Na prática, o número real pode ser maior.")
+    
+    st.divider()
+    st.subheader("🔬 Condensação Combinatória (Redução de Combinações)")
+    st.markdown("""
+    O método de Mandel reduzia o universo de combinações prevendo **5 de 6 números**.
+    Nosso motor faz algo similar com os filtros estatísticos:
+    """)
+    
+    # Mostrar como os filtros reduzem
+    st.info("""
+    **Como nosso motor aplica a condensação:**
+    - **Gap Analysis + Markov** → identifica dezenas com maior probabilidade (o "5 de 6" de Mandel)
+    - **Line Reduction** → reduz combinações com filtros (soma, ímpar/par, consecutivos, quadrantes)
+    - **Hot/Cold Numbers** → prioriza dezenas quentes
+    - **Score multivariado** → combina todos os fatores
+    
+    Use a aba **Line Reduction** para aplicar a condensação, ou a aba **Apostas Múltiplas** para desdobramento.
+    """)
 
 def plot_cost_vs_numbers(cfg, theme):
     from math import comb
