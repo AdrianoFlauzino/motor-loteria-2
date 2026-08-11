@@ -5,6 +5,5 @@ plotly
 requests
 xlsxwriter
 openpyxl
-scikit-learn
 fpdf2
 openai
