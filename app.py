@@ -15,6 +15,7 @@ from io import BytesIO
 from collections import Counter
 from datetime import datetime, timedelta
 
+# === COMPATIBILIDADE E LIBS OPCIONAIS ===
 try:
     from math import comb
 except ImportError:
@@ -41,6 +42,7 @@ try:
 except ImportError:
     HAS_OPENAI = False
 
+# === CONFIGURAÇÕES GERAIS ===
 LOTTERIES = {
     "Mega Sena": {
         "dezenas_total": 60, "dezenas_aposta": 6, "max_acertos": 6,
@@ -65,7 +67,7 @@ LOTTERIES = {
     },
     "+Milionária": {
         "dezenas_total": 50, "dezenas_aposta": 6, "max_acertos": 6,
-        "premios": {4: "Quadra", 5: "Quina", 6: "Sena"},
+        "premios": {2: "2+1", 3: "3+1", 4: "Quadra", 5: "Quina", 6: "Sena"},
         "color": "orange", "api_slug": "maismilionaria",
         "tem_trevos": True, "trevos_total": 6, "trevos_aposta": 2,
         "tem_mes": False, "custo_aposta": 6.00,
@@ -73,13 +75,41 @@ LOTTERIES = {
     },
     "Dia de Sorte": {
         "dezenas_total": 31, "dezenas_aposta": 7, "max_acertos": 7,
-        "premios": {4: "Quadra", 5: "Quina", 6: "Sena", 7: "Sena+Mês"},
+        "premios": {4: "Quadra", 5: "Quina", 6: "Sena", 7: "7 Acertos"},
         "color": "pink", "api_slug": "diadesorte",
         "tem_trevos": False, "tem_mes": True, "meses_total": 12,
-        "meses_lista": ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
-                        "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"],
+        "meses_lista": ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"],
         "custo_aposta": 2.50,
         "max_dezenas_aposta": 15,
+    },
+    "Lotomania": {
+        "dezenas_total": 100, "dezenas_aposta": 50, "max_acertos": 50,
+        "premios": {15: "15 Acertos", 16: "16 Acertos", 17: "17 Acertos", 18: "18 Acertos", 19: "19 Acertos", 20: "20 Acertos", 0: "0 Acertos"},
+        "color": "teal", "api_slug": "lotomania",
+        "tem_trevos": False, "tem_mes": False, "custo_aposta": 3.00,
+        "max_dezenas_aposta": 50,
+    },
+    "Timemania": {
+        "dezenas_total": 80, "dezenas_aposta": 10, "max_acertos": 7,
+        "premios": {3: "3 Acertos", 4: "4 Acertos", 5: "5 Acertos", 6: "6 Acertos", 7: "7 Acertos"},
+        "color": "red", "api_slug": "timemania",
+        "tem_trevos": False, "tem_mes": False, "custo_aposta": 3.50,
+        "max_dezenas_aposta": 12,
+    },
+    "Dupla Sena": {
+        "dezenas_total": 50, "dezenas_aposta": 6, "max_acertos": 6,
+        "premios": {3: "Terno", 4: "Quadra", 5: "Quina", 6: "Sena"},
+        "color": "cyan", "api_slug": "duplasena",
+        "tem_trevos": False, "tem_mes": False, "custo_aposta": 2.50,
+        "max_dezenas_aposta": 15,
+    },
+    "Super Sete": {
+        "dezenas_total": 70, "dezenas_aposta": 7, "max_acertos": 7,
+        "premios": {3: "3 Acertos", 4: "4 Acertos", 5: "5 Acertos", 6: "6 Acertos", 7: "7 Acertos"},
+        "color": "indigo", "api_slug": "supersete",
+        "tem_trevos": False, "tem_mes": False, "custo_aposta": 2.50,
+        "max_dezenas_aposta": 7,
     },
 }
 
@@ -87,8 +117,12 @@ PREMIOS_ESTIMADOS = {
     "Mega Sena": {"Sena": 50000000, "Quina": 50000, "Quadra": 1500},
     "Lotofácil": {"15 Acertos": 2000000, "14 Acertos": 1500, "13 Acertos": 30, "12 Acertos": 12, "11 Acertos": 6},
     "Quina": {"Quina": 1000000, "Quadra": 10000, "Terno": 200, "Duque": 5},
-    "+Milionária": {"Sena": 100000000, "Quina": 30000, "Quadra": 1000},
-    "Dia de Sorte": {"Sena+Mês": 500000, "Sena": 50000, "Quina": 3000, "Quadra": 100},
+    "+Milionária": {"Sena": 100000000, "Quina": 30000, "Quadra": 1000, "3+1": 50, "2+1": 12},
+    "Dia de Sorte": {"7 Acertos": 500000, "Sena": 50000, "Quina": 3000, "Quadra": 100},
+    "Lotomania": {"20 Acertos": 3000000, "19 Acertos": 30000, "18 Acertos": 2000, "17 Acertos": 200, "16 Acertos": 50, "15 Acertos": 10, "0 Acertos": 100000},
+    "Timemania": {"7 Acertos": 500000, "6 Acertos": 30000, "5 Acertos": 2000, "4 Acertos": 200, "3 Acertos": 10},
+    "Dupla Sena": {"Sena": 1000000, "Quina": 20000, "Quadra": 1000, "Terno": 20},
+    "Super Sete": {"7 Acertos": 200000, "6 Acertos": 10000, "5 Acertos": 500, "4 Acertos": 50, "3 Acertos": 5},
 }
 
 THEME_COLORS = {
@@ -98,6 +132,7 @@ THEME_COLORS = {
 
 API_BASE = "https://servicebus2.caixa.gov.br/portaldeloterias/api"
 
+# === API CAIXA FUNCTIONS ===
 def fetch_caixa_latest(lottery_name):
     cfg = LOTTERIES[lottery_name]
     url = f"{API_BASE}/{cfg['api_slug']}"
@@ -131,68 +166,53 @@ def parse_caixa_json(data, lottery_name):
         dezenas = [int(d) for d in data["listaDezenas"]]
     elif "dezenas" in data:
         dezenas = [int(d) for d in data["dezenas"]]
-    if len(dezenas) < pick:
+    if len(dezenas) < pick and lottery_name != "Lotomania":
+        return None
+    if lottery_name == "Lotomania" and len(dezenas) < 20:
         return None
     row = {"concurso": data.get("numero", 0), "data": data.get("dataApuracao", "")}
-    for j, n in enumerate(sorted(dezenas[:pick])):
+    limit = 20 if lottery_name == "Lotomania" else pick
+    for j, n in enumerate(sorted(dezenas[:limit])):
         row[f"d{j+1}"] = n
     if cfg.get("tem_trevos"):
-        trevos = []
-        if "dezenasSorteadasSegundoSorteio" in data:
-            trevos = [int(t) for t in data["dezenasSorteadasSegundoSorteio"]]
-        elif "trevos" in data:
-            trevos = [int(t) for t in data["trevos"]]
-        elif "listaDezenasSegundoSorteio" in data:
-            trevos = [int(t) for t in data["listaDezenasSegundoSorteio"]]
-        for j, t in enumerate(sorted(trevos[:cfg["trevos_aposta"]])):
+        trevos = data.get("trevos", []) or data.get("listaDezenasSegundoSorteio", [])
+        for j, t in enumerate(sorted([int(x) for x in trevos[:cfg["trevos_aposta"]]])):
             row[f"t{j+1}"] = t
     if cfg.get("tem_mes"):
-        mes = None
-        if "mesSorteado" in data and data["mesSorteado"]:
-            mes_str = str(data["mesSorteado"])
-            for i, m in enumerate(cfg["meses_lista"]):
-                if m.lower() == mes_str.lower():
-                    mes = i + 1
-                    break
-            if mes is None:
-                try:
-                    mes = int(mes_str)
-                except ValueError:
-                    mes = None
-        elif "nomeMesSorteado" in data:
-            mes_str = str(data["nomeMesSorteado"])
-            for i, m in enumerate(cfg["meses_lista"]):
-                if m.lower() == mes_str.lower():
-                    mes = i + 1
-                    break
-        if mes is None:
-            mes = random.randint(1, 12)
-        row["mes"] = mes
+        mes = data.get("mesSorteado") or data.get("nomeMesSorteado")
+        if mes:
+            if isinstance(mes, str):
+                for i, m_nome in enumerate(cfg["meses_lista"]):
+                    if m_nome.lower() in mes.lower():
+                        row["mes"] = i + 1
+            else:
+                row["mes"] = int(mes)
     return row
 
-@st.cache_data(show_spinner="Buscando histórico na Caixa...", ttl=3600)
+@st.cache_data(show_spinner="Sincronizando com Servidores da Caixa...", ttl=3600)
 def fetch_caixa_history(lottery_name, n_concursos=50):
     latest = fetch_caixa_latest(lottery_name)
     if not latest:
         return None
     latest_num = latest.get("numero", 0)
-    if latest_num == 0:
-        return None
     rows = []
     parsed = parse_caixa_json(latest, lottery_name)
     if parsed:
         rows.append(parsed)
-    start = latest_num - 1
-    end = max(1, latest_num - n_concursos + 1)
-    for concurso_num in range(start, end - 1, -1):
-        data = fetch_caixa_concurso(lottery_name, concurso_num)
+    progress_bar = st.progress(0)
+    total = max(1, n_concursos - 1)
+    for i, num in enumerate(range(latest_num - 1, max(0, latest_num - n_concursos), -1)):
+        data = fetch_caixa_concurso(lottery_name, num)
         if data:
-            parsed = parse_caixa_json(data, lottery_name)
-            if parsed:
-                rows.append(parsed)
-        time.sleep(0.15)
+            p = parse_caixa_json(data, lottery_name)
+            if p:
+                rows.append(p)
+        progress_bar.progress(min(1.0, (i + 1) / total))
+        time.sleep(0.1)
+    progress_bar.empty()
     return pd.DataFrame(rows) if rows else None
 
+# === UTILITY FUNCTIONS ===
 def is_prime(n):
     if n < 2:
         return False
@@ -206,9 +226,7 @@ def is_prime(n):
     return True
 
 def get_theme():
-    if "theme" not in st.session_state:
-        st.session_state["theme"] = "Branco"
-    return THEME_COLORS[st.session_state["theme"]]
+    return THEME_COLORS[st.session_state.get("theme", "Branco")]
 
 def apply_theme_css():
     theme = get_theme()
@@ -248,16 +266,28 @@ def metric_card(label, value, sub=""):
     </div>
     """, unsafe_allow_html=True)
 
+# === PWA, COMPLIANCE, LGPD ===
 def inject_pwa_config():
     manifest = {
         "name": "Motor Analitico de Loterias",
-        "short_name": "LotoAnalise",
+        "short_name": "LotoMotor",
         "description": "Analise estatistica avancada e gerador de apostas para loterias da Caixa",
         "start_url": "/",
         "display": "standalone",
         "background_color": "#0A1628",
         "theme_color": "#1E90FF",
-        "icons": [{"src": "https://cdn-icons-png.flaticon.com/512/263/263142.png", "sizes": "512x512", "type": "image/png"}]
+        "icons": [
+            {
+                "src": "data:image/svg+xml;base64," + base64.b64encode(
+                    b'<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">'
+                    b'<rect width="192" height="192" rx="32" fill="#1E90FF"/>'
+                    b'<text x="96" y="130" font-size="110" text-anchor="middle" fill="white">D</text>'
+                    b'</svg>'
+                ).decode(),
+                "sizes": "192x192",
+                "type": "image/svg+xml",
+            }
+        ],
     }
     manifest_json = json.dumps(manifest)
     st.markdown(f"""
@@ -268,6 +298,22 @@ def inject_pwa_config():
     link.rel = 'manifest';
     link.href = manifestURL;
     document.head.appendChild(link);
+    var meta1 = document.createElement('meta');
+    meta1.name = 'apple-mobile-web-app-capable';
+    meta1.content = 'yes';
+    document.head.appendChild(meta1);
+    var meta2 = document.createElement('meta');
+    meta2.name = 'apple-mobile-web-app-status-bar-style';
+    meta2.content = 'black-translucent';
+    document.head.appendChild(meta2);
+    var meta3 = document.createElement('meta');
+    meta3.name = 'apple-mobile-web-app-title';
+    meta3.content = 'LotoMotor';
+    document.head.appendChild(meta3);
+    var meta4 = document.createElement('meta');
+    meta4.name = 'theme-color';
+    meta4.content = '#1E90FF';
+    document.head.appendChild(meta4);
     </script>
     """, unsafe_allow_html=True)
 
@@ -277,11 +323,11 @@ def render_compliance_banner(theme):
         <div style='display:flex;align-items:flex-start;gap:10px;'>
             <span style='font-size:1.3rem;'>⚠️</span>
             <div>
-                <div style='font-weight:700;color:#856404;font-size:0.9rem;margin-bottom:4px;'>Jogo Responsável</div>
+                <div style='font-weight:700;color:#856404;font-size:0.9rem;margin-bottom:4px;'>Jogo Responsavel</div>
                 <div style='font-size:0.8rem;color:{theme['text']};opacity:0.8;line-height:1.4;'>
-                    Este software <b>não aumenta suas chances reais de ganhar</b>. Loteria é um jogo de azar.
-                    Os modelos estatísticos servem apenas para análise e educação. Jogue com moderação.
-                    Se você ou alguém que você conhece precisa de ajuda, ligue <b>188</b> (CVV) - gratuito e confidencial.
+                    Este software <b>nao aumenta suas chances reais de ganhar</b>. Loteria e um jogo de azar.
+                    Os modelos estatisticos servem apenas para analise e educacao. Jogue com moderacao.
+                    Se voce ou alguem que voce conhece precisa de ajuda, ligue <b>188</b> (CVV) - gratuito e confidencial.
                 </div>
             </div>
         </div>
@@ -295,21 +341,22 @@ def render_lgpd_consent():
         st.markdown("""
         <div style='position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;color:white;padding:16px 24px;z-index:9999;display:flex;align-items:center;justify-content:space-between;gap:20px;'>
             <div style='font-size:0.85rem;flex:1;'>
-                Usamos cookies essenciais para funcionamento do app. Nenhum dado pessoal é coletado sem seu consentimento (LGPD - Lei 13.709/2018).
+                Usamos cookies essenciais para funcionamento do app. Nenhum dado pessoal e coletado sem seu consentimento (LGPD - Lei 13.709/2018).
             </div>
             <button onclick="this.parentElement.style.display='none'" style="background:#1E90FF;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:bold;">Aceitar</button>
         </div>
         """, unsafe_allow_html=True)
-
+# === DATA INGESTION ===
 @st.cache_data(show_spinner=False)
 def generate_mock_data(lottery_name, n_draws=300):
     cfg = LOTTERIES[lottery_name]
     total = cfg["dezenas_total"]
     pick = cfg["dezenas_aposta"]
+    draw_count = 20 if lottery_name == "Lotomania" else pick
     rows = []
     base_date = datetime.now() - timedelta(days=n_draws * 3)
     for i in range(n_draws):
-        nums = sorted(random.sample(range(1, total + 1), pick))
+        nums = sorted(random.sample(range(1, total + 1), draw_count))
         row = {"concurso": n_draws - i, "data": (base_date + timedelta(days=i * 3)).strftime("%d/%m/%Y")}
         for j, n in enumerate(nums):
             row[f"d{j+1}"] = n
@@ -427,6 +474,7 @@ def get_meses_series(df, lottery_name):
         return None
     return pd.to_numeric(df["mes"], errors="coerce").dropna()
 
+# === ANALYTICS FUNCTIONS ===
 @st.cache_data(show_spinner=False)
 def compute_frequency(draws_matrix, total_numbers):
     flat = draws_matrix.flatten()
@@ -610,16 +658,18 @@ def count_quadrant_distribution(bet, quadrants):
 @st.cache_data(show_spinner=False)
 def compute_cycle_completion(draws_matrix, total_numbers):
     seen = set()
+    cycle_start = 0
     for i in range(len(draws_matrix) - 1, -1, -1):
         for n in draws_matrix[i]:
             seen.add(int(n))
         if len(seen) == total_numbers:
+            cycle_start = i
             seen = set()
             for n in draws_matrix[i]:
                 seen.add(int(n))
     missing = [n for n in range(1, total_numbers + 1) if n not in seen]
     completion = (len(seen) / total_numbers) * 100
-    return {"seen": sorted(seen), "missing": sorted(missing), "completion_pct": round(completion, 1), "total_unique": len(seen), "total_numbers": total_numbers}
+    return {"seen": sorted(seen), "missing": sorted(missing), "completion_pct": round(completion, 1), "total_unique": len(seen), "total_numbers": total_numbers, "cycle_start_idx": cycle_start}
 
 def compute_alerts(total_numbers, gap_data, cycle):
     alerts = []
@@ -646,6 +696,233 @@ def compute_alerts(total_numbers, gap_data, cycle):
     if cycle["completion_pct"] > 70 and len(cycle["missing"]) <= 5 and cycle["missing"]:
         alerts.append({"tipo": "ciclo_faltando_poucas", "severidade": "media", "icone": "🟡", "titulo": f"Apenas {len(cycle['missing'])} dezenas faltando no ciclo", "detalhe": f"Dezenas: {', '.join(str(m) for m in cycle['missing'])} recebem +15% no score"})
     return alerts
+# === ML PREDITIVO ===
+def compute_ml_predictions(draws_matrix, total_numbers, freq, delays, gap_data, hot_cold_data, markov_data):
+    """Classifica cada dezena como provável/improvável usando ML (Random Forest) ou ensemble estatístico como fallback.
+    Retorna dict com prob_ml, top_provaveis, metodo, importancias, probs_lista."""
+    n_draws = len(draws_matrix)
+    pick = draws_matrix.shape[1]
+    dezenas_range = list(range(1, total_numbers + 1))
+    features = []
+    labels = []
+    for i in range(1, n_draws):
+        row_prev = set(int(x) for x in draws_matrix[i - 1])
+        row_curr = set(int(x) for x in draws_matrix[i])
+        for n in dezenas_range:
+            feat = [
+                float(n in row_prev),
+                float(n in hot_cold_data["hot_set"]),
+                float(n in hot_cold_data["cold_set"]),
+                float(gap_data[n]["z_score"]),
+                float(gap_data[n]["mean_gap"]),
+                float(gap_data[n]["current_gap"]),
+                float(freq[n]),
+            ]
+            if markov_data:
+                feat.append(float(markov_data["next_probs"].get(n, 0)))
+            else:
+                feat.append(0.0)
+            features.append(feat)
+            labels.append(1 if n in row_curr else 0)
+    if len(features) < 50:
+        return None
+    try:
+        from sklearn.ensemble import RandomForestClassifier
+        X = np.array(features)
+        y = np.array(labels)
+        clf = RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42, n_jobs=-1)
+        clf.fit(X, y)
+        last_row = set(int(x) for x in draws_matrix[-1])
+        X_next = []
+        for n in dezenas_range:
+            feat = [
+                float(n in last_row),
+                float(n in hot_cold_data["hot_set"]),
+                float(n in hot_cold_data["cold_set"]),
+                float(gap_data[n]["z_score"]),
+                float(gap_data[n]["mean_gap"]),
+                float(gap_data[n]["current_gap"]),
+                float(freq[n]),
+            ]
+            if markov_data:
+                feat.append(float(markov_data["next_probs"].get(n, 0)))
+            else:
+                feat.append(0.0)
+            X_next.append(feat)
+        probs = clf.predict_proba(np.array(X_next))
+        prob_pos = probs[:, 1] if probs.shape[1] > 1 else np.zeros(len(dezenas_range))
+        importancias = clf.feature_importances_
+        metodo = "Random Forest"
+    except ImportError:
+        prob_pos = np.zeros(total_numbers)
+        max_f = max(freq.values()) if max(freq.values()) > 0 else 1
+        max_d = max(delays.values()) if max(delays.values()) > 0 else 1
+        for idx, n in enumerate(dezenas_range):
+            s = 0.0
+            s += 0.25 * (freq[n] / max_f)
+            s += 0.20 * (delays[n] / max_d)
+            s += 0.20 * (gap_data[n]["prob_next"] / 100.0)
+            if markov_data:
+                s += 0.20 * (markov_data["next_probs"].get(n, 0) / 100.0)
+            s += 0.15 * (1.0 if n in hot_cold_data["hot_set"] else 0.0)
+            prob_pos[idx] = s
+        prob_pos = prob_pos / prob_pos.max() * 100 if prob_pos.max() > 0 else prob_pos
+        importancias = np.zeros(8)
+        metodo = "Ensemble Estatístico"
+    prob_map = {n: round(float(prob_pos[i]), 1) for i, n in enumerate(dezenas_range)}
+    top_sorted = sorted(prob_map.items(), key=lambda x: x[1], reverse=True)
+    top_provaveis = [n for n, p in top_sorted[:pick * 2]]
+    feature_names = ["Estava no último", "Hot", "Cold", "Z-Score", "Média Gap", "Gap Atual", "Frequência", "Markov"]
+    importancias_map = {fn: round(float(imp), 4) for fn, imp in zip(feature_names, importancias)}
+    return {
+        "prob_ml": prob_map,
+        "top_provaveis": top_provaveis,
+        "metodo": metodo,
+        "importancias": importancias_map,
+        "probs_lista": top_sorted,
+    }
+
+# === ANÁLISE SAZONAL ===
+def compute_seasonal_analysis(df_data, draws_matrix, total_numbers, lottery_name):
+    """Analisa padrões sazonais: por mês, dia da semana e faixa de concursos."""
+    resultado = {"tem_data": False, "por_mes": {}, "por_dia_semana": {}, "por_faixa": {}, "mensagem": ""}
+    if df_data is None or "data" not in df_data.columns:
+        resultado["mensagem"] = "Histórico sem coluna 'data' — análise sazonal indisponível. Use dados da API Caixa."
+        return resultado
+    try:
+        datas = pd.to_datetime(df_data["data"], dayfirst=True, errors="coerce")
+    except Exception:
+        datas = pd.to_datetime(df_data["data"], errors="coerce")
+    if datas.isna().all():
+        resultado["mensagem"] = "Coluna 'data' não pôde ser interpretada."
+        return resultado
+    resultado["tem_data"] = True
+    mes_map = {1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun",
+               7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez"}
+    dia_map = {0: "Seg", 1: "Ter", 2: "Qua", 3: "Qui", 4: "Sex", 5: "Sáb", 6: "Dom"}
+    freq_mes = Counter()
+    freq_dia = Counter()
+    for dt in datas.dropna():
+        freq_mes[dt.month] += 1
+        freq_dia[dt.weekday()] += 1
+    resultado["por_mes"] = {mes_map[k]: v for k, v in sorted(freq_mes.items())}
+    resultado["por_dia_semana"] = {dia_map[k]: v for k, v in sorted(freq_dia.items())}
+    n = len(draws_matrix)
+    quartil = max(1, n // 4)
+    nomes_faixas = ["1º quartil (antigos)", "2º quartil", "3º quartil", "4º quartil (recentes)"]
+    faixas = {}
+    for f in range(4):
+        ini = f * quartil
+        fim = min(n, (f + 1) * quartil)
+        if ini >= fim:
+            break
+        flat = draws_matrix[ini:fim].flatten()
+        freq_f = Counter(flat.tolist())
+        top5 = [n for n, _ in freq_f.most_common(5)]
+        faixas[nomes_faixas[f]] = {"inicio": ini, "fim": fim, "top5": top5, "freq": dict(freq_f)}
+    resultado["por_faixa"] = faixas
+    return resultado
+
+def plot_seasonal_mes(seasonal, theme):
+    if not seasonal.get("tem_data"):
+        return None
+    meses = list(seasonal["por_mes"].keys())
+    valores = list(seasonal["por_mes"].values())
+    fig = go.Figure(data=[go.Bar(x=meses, y=valores, marker_color=theme["accent"])])
+    fig.update_layout(title="Quantidade de Sorteios por Mês", xaxis_title="Mês", yaxis_title="Sorteios",
+                      template="plotly_white", height=350,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    return fig
+
+def plot_seasonal_dia(seasonal, theme):
+    if not seasonal.get("tem_data"):
+        return None
+    dias = list(seasonal["por_dia_semana"].keys())
+    valores = list(seasonal["por_dia_semana"].values())
+    fig = go.Figure(data=[go.Bar(x=dias, y=valores, marker_color="#FF8C00")])
+    fig.update_layout(title="Sorteios por Dia da Semana", xaxis_title="Dia", yaxis_title="Sorteios",
+                      template="plotly_white", height=350,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    return fig
+
+# === HISTÓRICO DE DESEMPENHO ===
+def registrar_apostas_no_historico(lottery_name, bets, scores_list, trevos_bets, mes_bets):
+    """Registra as apostas geradas no histórico de desempenho (session_state)."""
+    if "historico_apostas" not in st.session_state:
+        st.session_state["historico_apostas"] = []
+    registro = {
+        "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "loteria": lottery_name,
+        "apostas": list(bets),
+        "scores": list(scores_list) if scores_list else [],
+        "trevos": list(trevos_bets) if trevos_bets else [],
+        "meses": list(mes_bets) if mes_bets else [],
+        "resultados": {},
+    }
+    st.session_state["historico_apostas"].append(registro)
+    return registro
+
+def conferir_historico_contra_sorteio(lottery_name, sorteio_parsed, cfg):
+    """Confere todas as apostas registradas contra um sorteio real (concurso)."""
+    if "historico_apostas" not in st.session_state:
+        return 0
+    concurso = sorteio_parsed.get("concurso", "?")
+    dezenas_sorteadas = [sorteio_parsed.get(f"d{i+1}") for i in range(cfg["dezenas_aposta"]) if sorteio_parsed.get(f"d{i+1}") is not None]
+    if not dezenas_sorteadas:
+        return 0
+    sort_set = set(dezenas_sorteadas)
+    total_premiadas = 0
+    for reg in st.session_state["historico_apostas"]:
+        if reg["loteria"] != lottery_name:
+            continue
+        if str(concurso) in reg["resultados"]:
+            continue
+        for bet in reg["apostas"]:
+            hits = len(set(bet) & sort_set)
+            premio = cfg["premios"].get(hits, "")
+            if premio:
+                reg["resultados"][str(concurso)] = {"acertos": hits, "premio": premio}
+                total_premiadas += 1
+                break
+    return total_premiadas
+
+def historico_para_dataframe():
+    """Converte o histórico de apostas em DataFrame para exibição/exportação."""
+    rows = []
+    if "historico_apostas" in st.session_state:
+        for reg in st.session_state["historico_apostas"]:
+            for i, bet in enumerate(reg["apostas"]):
+                rows.append({
+                    "Data": reg["data"],
+                    "Loteria": reg["loteria"],
+                    "Aposta": " - ".join(f"{n:02d}" for n in bet),
+                    "Score": reg["scores"][i] if i < len(reg["scores"]) else "-",
+                    "Concurso Premiado": next((k for k, v in reg["resultados"].items() if v["acertos"] >= 4), "-"),
+                })
+    return pd.DataFrame(rows)
+
+# === MELHORES COMBINAÇÕES ===
+def gerar_melhores_combinacoes(lottery_name, draws_matrix, n_top=10, trevos_matrix=None, meses_series=None):
+    """Gera as melhores combinações testando múltiplas sementes e estratégias."""
+    melhores = []
+    estrategias = ["híbrido", "frequentes", "atrasadas"]
+    seeds = [42, 123, 2024, 777, 999]
+    for strat in estrategias:
+        for seed in seeds:
+            bets, scores_list, _, _, _, _, _, _, _, _, _ = generate_bets(
+                lottery_name, draws_matrix, n_bets=10, strategy=strat,
+                trevos_matrix=trevos_matrix, meses_series=meses_series)
+            for bet, score in zip(bets, scores_list):
+                melhores.append({"estrategia": strat, "bet": tuple(bet), "score": score, "seed": seed})
+    vistos = set()
+    unicos = []
+    for m in sorted(melhores, key=lambda x: x["score"], reverse=True):
+        if m["bet"] not in vistos:
+            vistos.add(m["bet"])
+            unicos.append(m)
+        if len(unicos) >= n_top * 5:
+            break
+    return unicos[:n_top]
 # === ASSISTANT IA FUNCTIONS ===
 def build_analysis_context(lottery_name, cfg, draws_matrix, freq, delays, gap_data, hot_cold_data, cycle, markov_data, alerts, bets=None, scores_list=None, roi_data=None):
     total = cfg["dezenas_total"]
@@ -735,7 +1012,7 @@ def local_assistant_response(question, context_data):
 
     if "ciclo" in q:
         resp = f"🔄 **Ciclo de Completude ({lottery_name}):**\n\n**{cycle['completion_pct']}%** completo ({len(cycle['seen'])}/{cycle['total_numbers']} vistas)\n"
-        if cycle['missing']:
+        if cycle.get('missing'):
             resp += f"**Faltando:** {cycle['missing']}\n"
         return resp
 
@@ -753,7 +1030,7 @@ def local_assistant_response(question, context_data):
             return resp
         return "Execute o backtesting primeiro."
 
-    if "estratég" in q:
+    if "estratég" in q or "estrateg" in q:
         return "⚔️ **Estratégias:**\n\n1. **Híbrido** — roleta ponderada com todos os fatores\n2. **Frequentes** — prioriza dezenas que mais saem\n3. **Atrasadas** — prioriza dezenas que estão devendo\n4. **Aleatória** — puramente random"
 
     if "gap" in q or "intervalo" in q:
@@ -767,8 +1044,8 @@ def local_assistant_response(question, context_data):
     if "janela" in q or "decay" in q:
         return "⚖️ **Janela Deslizante:**\n\nSorteios recentes valem mais. O fator de decay controla o peso. 0.99 = quase igual; 0.80 = forte viés para o recente."
 
-    if "par" in q or "dupla" in q:
-        return "🔗 **Pares Fortes:**\n\nIdentifica dezenas que aparecem juntas com frequência. Os 20 pares mais fortes são usados no score (peso 15%)."
+    if "par" in q or "dupla" in q or "pares" in q:
+        return "🔗 **Pares Fortes:**\n\nIdentifica dezenas que aparecem juntas com frequência (Monte Carlo + histórico). Os 20 pares mais fortes são usados no score (peso 15%)."
 
     if any(w in q for w in ["olá", "oi", "bom dia", "ajuda", "help"]):
         return "🤖 **Olá! Sou o assistente do Motor Analítico.**\n\nPosso responder sobre: apostas, atrasadas, frequentes, Markov, ciclo, alertas, ROI, estratégias, gap analysis, janela deslizante e pares fortes. Digite sua pergunta!"
@@ -777,18 +1054,26 @@ def local_assistant_response(question, context_data):
 
 def openai_assistant_response(question, context, api_key):
     if not HAS_OPENAI:
-        return "Biblioteca openai não instalada."
+        return "Biblioteca openai não instalada. Adicione 'openai' ao requirements.txt"
     try:
         client = OpenAI(api_key=api_key)
-        system_prompt = f"Você é um assistente especializado em análise estatística de loterias da Caixa (Brasil). Use SEMPRE os dados fornecidos abaixo para responder. Não invente números.\n\nDADOS DA ANÁLISE:\n{context}\n\nIMPORTANTE: Lembre sempre que loteria é jogo de azar. Seja direto, técnico e objetivo."
+        system_prompt = f"""Você é um assistente especializado em análise estatística de loterias da Caixa (Brasil).
+Use SEMPRE os dados fornecidos abaixo para responder. Não invente números.
+
+DADOS DA ANÁLISE:
+{context}
+
+IMPORTANTE: Lembre sempre que loteria é jogo de azar e os modelos não aumentam chances reais.
+Seja direto, técnico e objetivo. Use os dados fornecidos."""
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": question}],
-            max_tokens=800, temperature=0.3,
+            max_tokens=800,
+            temperature=0.3,
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"Erro ao consultar IA: {e}"
+        return f"Erro ao consultar IA: {e}. Verifique sua API key."
 
 # === BET GENERATION FUNCTIONS ===
 def is_bet_valid(bet, patterns, lottery_name, quadrants):
@@ -971,41 +1256,54 @@ def bets_are_unique(new_bets, old_bets):
         return True
     old_set = {tuple(b) for b in old_bets}
     return all(tuple(b) not in old_set for b in new_bets)
-
 # === FILTERING FUNCTIONS ===
 def apply_progressive_filters(combinations, filters, freq=None, delays=None, strong_pairs=None, hot_set=None, cold_set=None, quadrants=None, custo_unit=5.0):
     steps = []
     current = list(combinations)
     total_original = len(current)
     steps.append({"filtro": "Combinações iniciais", "restantes": total_original, "reduzidas": 0, "redução_pct": 0.0, "economia": 0.0})
+
     def apply_filter(combos, f):
         result = []
         for c in combos:
             c_sorted = sorted(c)
-            if f.get("soma_min") is not None and sum(c_sorted) < f["soma_min"]: continue
-            if f.get("soma_max") is not None and sum(c_sorted) > f["soma_max"]: continue
+            if f.get("soma_min") is not None and sum(c_sorted) < f["soma_min"]:
+                continue
+            if f.get("soma_max") is not None and sum(c_sorted) > f["soma_max"]:
+                continue
             imp = sum(1 for x in c_sorted if x % 2 != 0)
-            if f.get("min_impares") is not None and imp < f["min_impares"]: continue
-            if f.get("max_impares") is not None and imp > f["max_impares"]: continue
+            if f.get("min_impares") is not None and imp < f["min_impares"]:
+                continue
+            if f.get("max_impares") is not None and imp > f["max_impares"]:
+                continue
             max_consec = cur = 1
             for i in range(1, len(c_sorted)):
-                if c_sorted[i] == c_sorted[i-1] + 1: cur += 1; max_consec = max(max_consec, cur)
-                else: cur = 1
-            if f.get("max_consecutivos") is not None and max_consec > f["max_consecutivos"]: continue
+                if c_sorted[i] == c_sorted[i-1] + 1:
+                    cur += 1
+                    max_consec = max(max_consec, cur)
+                else:
+                    cur = 1
+            if f.get("max_consecutivos") is not None and max_consec > f["max_consecutivos"]:
+                continue
             if quadrants and f.get("max_por_quad") is not None:
                 qdist = count_quadrant_distribution(c_sorted, quadrants)
-                if any(v > f["max_por_quad"] for v in qdist.values()): continue
+                if any(v > f["max_por_quad"] for v in qdist.values()):
+                    continue
             if hot_set and f.get("min_hot") is not None and f["min_hot"] > 0:
                 hot_count = len([n for n in c_sorted if n in hot_set])
-                if hot_count < f["min_hot"]: continue
+                if hot_count < f["min_hot"]:
+                    continue
             if cold_set and f.get("excluir_cold") and f["excluir_cold"]:
-                if any(n in cold_set for n in c_sorted): continue
+                if any(n in cold_set for n in c_sorted):
+                    continue
             if strong_pairs and f.get("min_pares_fortes") is not None and f["min_pares_fortes"] > 0:
                 top_pairs_set = set(tuple(sorted(p)) for p, _ in strong_pairs[:20])
                 pair_hits = sum(1 for combo in itertools.combinations(c_sorted, 2) if tuple(sorted(combo)) in top_pairs_set)
-                if pair_hits < f["min_pares_fortes"]: continue
+                if pair_hits < f["min_pares_fortes"]:
+                    continue
             result.append(c_sorted)
         return result
+
     filter_defs = [
         ("soma_ativo", {"soma_min": "soma_min", "soma_max": "soma_max"}, lambda v: f"Soma entre {v.get('soma_min')} e {v.get('soma_max')}"),
         ("impares_ativo", {"min_impares": "min_impares", "max_impares": "max_impares"}, lambda v: f"Ímpares: {v.get('min_impares')}–{v.get('max_impares')}"),
@@ -1017,7 +1315,15 @@ def apply_progressive_filters(combinations, filters, freq=None, delays=None, str
     ]
     for key, params, label_fn in filter_defs:
         if filters.get(key):
-            f_params = {k: filters.get(v) if isinstance(v, str) else v for k, v in params.items()}
+            f_params = {k: filters.get(k2) if k != "excluir_cold" else True for k, k2 in params.items()}
+            if key == "quad_ativo" and not quadrants:
+                continue
+            if key == "hot_ativo" and not hot_set:
+                continue
+            if key == "cold_ativo" and not cold_set:
+                continue
+            if key == "pares_ativo" and not strong_pairs:
+                continue
             prev = len(current)
             current = apply_filter(current, f_params)
             reduzidas = prev - len(current)
@@ -1136,7 +1442,11 @@ def compare_strategies(lottery_name, draws_matrix, n_bets=10, weight_freq=0.4, w
     strategies = ["híbrido", "frequentes", "atrasadas", "aleatória"]
     comparison = []
     for strat in strategies:
-        bets, scores_list, freq, delays, real_pairs, patterns, quadrants, cycle, trevos_bets, mes_bets, rej = generate_bets(lottery_name, draws_matrix, n_bets=n_bets, strategy=strat, weight_freq=weight_freq, weight_delay=weight_delay, weight_pairs=weight_pairs, trevos_matrix=trevos_matrix, meses_series=meses_series, decay=decay, min_hot=0, exclude_cold=False, hot_set=None, cold_set=None)
+        bets, scores_list, freq, delays, real_pairs, patterns, quadrants, cycle, trevos_bets, mes_bets, rej = generate_bets(
+            lottery_name, draws_matrix, n_bets=n_bets, strategy=strat,
+            weight_freq=weight_freq, weight_delay=weight_delay, weight_pairs=weight_pairs,
+            trevos_matrix=trevos_matrix, meses_series=meses_series, decay=decay,
+            min_hot=0, exclude_cold=False, hot_set=None, cold_set=None)
         results, df_detail, roi_data = run_backtest(bets, draws_matrix, lottery_name)
         total_premios = sum(v for k, v in results.items() if k != "Nenhum")
         comparison.append({"Estratégia": strat.capitalize(), "Apostas": len(bets), "Prêmios Ganhos": total_premios, "Custo Total (R$)": roi_data["custo_total"], "Prêmios Total (R$)": roi_data["premios_total"], "ROI %": roi_data["roi_pct"], "Lucro/Prejuízo (R$)": roi_data["lucro_liquido"]})
@@ -1163,7 +1473,6 @@ def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_b
             mes_acertou = (mes_bets[i] == mes_sort)
         resultados.append({"Aposta #": i + 1, "Dezenas": " - ".join(f"{n:02d}" for n in bet), "Acertos": hits, "Números Acertados": " - ".join(f"{n:02d}" for n in numeros_acertados) if numeros_acertados else "-", "Prêmio": label if label else "-", "Trevo Hits": trevo_hits if trevos_bets else "-", "Mês?": "✅" if mes_acertou else ("❌" if mes_bets else "-")})
     return pd.DataFrame(resultados)
-
 # === EXPORT FUNCTIONS ===
 def export_to_excel(bets, freq, delays, strong_pairs, lottery_name, trevos_bets=None, mes_bets=None, scores_list=None):
     cfg = LOTTERIES[lottery_name]
@@ -1206,7 +1515,14 @@ def export_to_caixa_json(bets, lottery_name, trevos_bets=None, mes_bets=None):
             aposta["mes"] = mes_bets[i]
             aposta["mes_nome"] = cfg["meses_lista"][mes_bets[i] - 1]
         apostas_list.append(aposta)
-    data = {"loteria": loteria_slug, "loteria_nome": lottery_name, "dezenas_aposta": cfg["dezenas_aposta"], "total_apostas": len(bets), "apostas": apostas_list, "gerado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    data = {
+        "loteria": loteria_slug,
+        "loteria_nome": lottery_name,
+        "dezenas_aposta": cfg["dezenas_aposta"],
+        "total_apostas": len(bets),
+        "apostas": apostas_list,
+        "gerado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
     if cfg.get("tem_trevos"):
         data["trevos_aposta"] = cfg["trevos_aposta"]
     if cfg.get("tem_mes"):
@@ -1297,7 +1613,13 @@ def render_caixa_export(bets, lottery_name, trevos_bets=None, mes_bets=None, dow
     json_data = export_to_caixa_json(bets, lottery_name, trevos_bets, mes_bets)
     json_str = json.dumps(json_data, ensure_ascii=False, indent=2)
     st.markdown("#### 🛒 Exportação para Carrinho da Caixa")
-    st.download_button(label="📥 Baixar JSON (formato Caixa)", data=json_str.encode("utf-8"), file_name=f"apostas_caixa_{lottery_name.lower().replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json", mime="application/json", key=f"download_json_{download_key}")
+    st.download_button(
+        label="📥 Baixar JSON (formato Caixa)",
+        data=json_str.encode("utf-8"),
+        file_name=f"apostas_caixa_{lottery_name.lower().replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+        mime="application/json",
+        key=f"download_json_{download_key}",
+    )
     st.markdown("##### 📋 Carrinho de Apostas")
     carrinho_rows = []
     for i, bet in enumerate(bets):
@@ -1308,12 +1630,15 @@ def render_caixa_export(bets, lottery_name, trevos_bets=None, mes_bets=None, dow
             row["Mês"] = cfg["meses_lista"][mes_bets[i] - 1]
         carrinho_rows.append(row)
     st.dataframe(pd.DataFrame(carrinho_rows), use_container_width=True, hide_index=True)
+
 # === PLOT FUNCTIONS ===
 def plot_frequency_bar(freq, total, theme):
     nums = list(range(1, total + 1))
     vals = [freq.get(n, 0) for n in nums]
     fig = go.Figure(data=[go.Bar(x=nums, y=vals, marker_color=theme["accent"])])
-    fig.update_layout(title="Frequência de Dezenas", xaxis_title="Dezena", yaxis_title="Frequência", template="plotly_white", height=400, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.update_layout(title="Frequência de Dezenas", xaxis_title="Dezena", yaxis_title="Frequência",
+                      template="plotly_white", height=400,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_hot_cold(hot_cold_data, total, theme):
@@ -1321,7 +1646,10 @@ def plot_hot_cold(hot_cold_data, total, theme):
     vals = [hot_cold_data["freq_recent"].get(n, 0) for n in nums]
     colors = ["#FF4444" if n in hot_cold_data["hot_set"] else "#4488FF" if n in hot_cold_data["cold_set"] else "#CCCCCC" for n in nums]
     fig = go.Figure(data=[go.Bar(x=nums, y=vals, marker_color=colors, text=vals, textposition="auto")])
-    fig.update_layout(title=f"Hot / Cold Numbers (últimos {hot_cold_data['recent_n']} sorteios)", xaxis_title="Dezena", yaxis_title="Frequência", template="plotly_white", height=400, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.update_layout(title=f"Hot / Cold Numbers (últimos {hot_cold_data['recent_n']} sorteios)",
+                      xaxis_title="Dezena", yaxis_title="Frequência",
+                      template="plotly_white", height=400,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_weighted_vs_simple(freq_simple, freq_weighted, total, theme):
@@ -1333,7 +1661,9 @@ def plot_weighted_vs_simple(freq_simple, freq_weighted, total, theme):
     fig = go.Figure()
     fig.add_trace(go.Bar(x=nums, y=[v / max_s for v in vals_s], marker_color="#CCCCCC", name="Frequência Simples", opacity=0.6))
     fig.add_trace(go.Bar(x=nums, y=[v / max_w for v in vals_w], marker_color=theme["accent"], name="Frequência Ponderada", opacity=0.8))
-    fig.update_layout(title="Frequência Simples vs Ponderada (normalizada)", xaxis_title="Dezena", yaxis_title="Frequência Normalizada", template="plotly_white", height=400, barmode="group", paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.update_layout(title="Frequência Simples vs Ponderada (normalizada)", xaxis_title="Dezena", yaxis_title="Frequência Normalizada",
+                      template="plotly_white", height=400, barmode="group",
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_gap_analysis(gap_data, total, theme):
@@ -1343,18 +1673,22 @@ def plot_gap_analysis(gap_data, total, theme):
     colors = ["#FF4444" if gap_data[n]["overdue"] else "#FFA500" if gap_data[n]["z_score"] > 1 else theme["accent"] for n in nums]
     fig = go.Figure()
     fig.add_trace(go.Bar(x=nums, y=current_gaps, marker_color=colors, name="Gap Atual", text=[f"{g}" for g in current_gaps], textposition="auto"))
-    fig.add_trace(go.Scatter(x=nums, y=mean_gaps, mode="lines+markers", line=dict(color="#FF0000", dash="dash", width=2), marker=dict(size=5), name="Média Histórica"))
-    fig.update_layout(title="Gap Analysis: Intervalo Atual vs Média Histórica", xaxis_title="Dezena", yaxis_title="Concursos sem aparecer", template="plotly_white", height=450, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]), showlegend=True)
+    fig.add_trace(go.Scatter(x=nums, y=mean_gaps, mode="lines+markers",
+                             line=dict(color="#FF0000", dash="dash", width=2), marker=dict(size=5), name="Média Histórica"))
+    fig.update_layout(title="Gap Analysis: Intervalo Atual vs Média Histórica", xaxis_title="Dezena", yaxis_title="Concursos sem aparecer",
+                      template="plotly_white", height=450,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]), showlegend=True)
     return fig
 
 def plot_gap_timeline(gap_data, num, n_draws, theme):
     appearances = gap_data[num]["appearances"]
-    fig = go.Figure()
     x_vals = list(range(n_draws))
     y_vals = [1 if i in set(appearances) else 0 for i in range(n_draws)]
     colors = ["#FF4444" if v == 1 else "#EEEEEE" for v in y_vals]
-    fig.add_trace(go.Bar(x=x_vals, y=y_vals, marker_color=colors, name=f"Dezena {num}"))
-    fig.update_layout(title=f"Timeline de Aparições — Dezena {num}", xaxis_title="Concurso (índice)", yaxis_title="Apareceu?", template="plotly_white", height=250, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]), showlegend=False)
+    fig = go.Figure(data=[go.Bar(x=x_vals, y=y_vals, marker_color=colors, name=f"Dezena {num}")])
+    fig.update_layout(title=f"Timeline de Aparições — Dezena {num}", xaxis_title="Concurso (índice)", yaxis_title="Apareceu?",
+                      template="plotly_white", height=250,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]), showlegend=False)
     return fig
 
 def plot_prob_ranking(gap_data, total, theme):
@@ -1364,14 +1698,21 @@ def plot_prob_ranking(gap_data, total, theme):
     sorted_nums = [nums[i] for i in sorted_idx]
     sorted_probs = [probs[i] for i in sorted_idx]
     colors = ["#FF4444" if gap_data[n]["overdue"] else theme["accent"] for n in sorted_nums]
-    fig = go.Figure(data=[go.Bar(x=[str(n) for n in sorted_nums], y=sorted_probs, marker_color=colors, text=[f"{p}%" for p in sorted_probs], textposition="auto")])
-    fig.update_layout(title="Ranking de Probabilidade para o Próximo Sorteio", xaxis_title="Dezena (rank)", yaxis_title="Probabilidade Estimada (%)", template="plotly_white", height=400, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig = go.Figure(data=[go.Bar(x=[str(n) for n in sorted_nums], y=sorted_probs, marker_color=colors,
+                                 text=[f"{p}%" for p in sorted_probs], textposition="auto")])
+    fig.update_layout(title="Ranking de Probabilidade para o Próximo Sorteio", xaxis_title="Dezena (rank)", yaxis_title="Probabilidade Estimada (%)",
+                      template="plotly_white", height=400,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_markov_heatmap(markov_data, total, theme):
     matrix = markov_data["transition_matrix"][1:total+1, 1:total+1]
-    fig = go.Figure(data=go.Heatmap(z=matrix, x=list(range(1, total + 1)), y=list(range(1, total + 1)), colorscale="Blues", colorbar=dict(title="P(Y|X)")))
-    fig.update_layout(title="Heatmap da Matriz de Transição de Markov P[Y aparecer | X apareceu antes]", xaxis_title="Dezena Y (próximo sorteio)", yaxis_title="Dezena X (sorteio anterior)", template="plotly_white", height=500, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig = go.Figure(data=go.Heatmap(z=matrix, x=list(range(1, total + 1)), y=list(range(1, total + 1)),
+                                    colorscale="Blues", colorbar=dict(title="P(Y|X)")))
+    fig.update_layout(title="Heatmap da Matriz de Transição de Markov P[Y aparecer | X apareceu antes]",
+                      xaxis_title="Dezena Y (próximo sorteio)", yaxis_title="Dezena X (sorteio anterior)",
+                      template="plotly_white", height=500,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_markov_ranking(markov_data, total, theme):
@@ -1380,36 +1721,50 @@ def plot_markov_ranking(markov_data, total, theme):
     nums = [str(n) for n, _ in sorted_items[:30]]
     vals = [v for _, v in sorted_items[:30]]
     fig = go.Figure(data=[go.Bar(x=nums, y=vals, marker_color=theme["accent"], text=[f"{v}%" for v in vals], textposition="auto")])
-    fig.update_layout(title="Top 30 Dezenas por Probabilidade de Markov (baseado no último sorteio)", xaxis_title="Dezena", yaxis_title="Probabilidade (%)", template="plotly_white", height=400, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.update_layout(title="Top 30 Dezenas por Probabilidade de Markov (baseado no último sorteio)",
+                      xaxis_title="Dezena", yaxis_title="Probabilidade (%)",
+                      template="plotly_white", height=400,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_delays_bar(delays, total, theme, title_suffix=""):
     nums = list(range(1, total + 1))
     vals = [delays.get(n, 0) for n in nums]
     fig = go.Figure(data=[go.Bar(x=nums, y=vals, marker_color=theme["accent"], opacity=0.8)])
-    fig.update_layout(title=f"Atraso de Dezenas{title_suffix}", xaxis_title="Dezena", yaxis_title="Atraso", template="plotly_white", height=400, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.update_layout(title=f"Atraso de Dezenas{title_suffix}", xaxis_title="Dezena", yaxis_title="Atraso",
+                      template="plotly_white", height=400,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_trevos_frequency(freq, total, theme):
     nums = list(range(1, total + 1))
     vals = [freq.get(n, 0) for n in nums]
     fig = go.Figure(data=[go.Bar(x=nums, y=vals, marker_color="#FF8C00")])
-    fig.update_layout(title="Frequência de Trevos", xaxis_title="Trevo", yaxis_title="Frequência", template="plotly_white", height=350, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.update_layout(title="Frequência de Trevos", xaxis_title="Trevo", yaxis_title="Frequência",
+                      template="plotly_white", height=350,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_meses_frequency(freq, meses_lista, theme):
     vals = [freq.get(i + 1, 0) for i in range(len(meses_lista))]
     fig = go.Figure(data=[go.Bar(x=meses_lista, y=vals, marker_color="#FF69B4")])
-    fig.update_layout(title="Frequência de Meses Sorteados", xaxis_title="Mês", yaxis_title="Frequência", template="plotly_white", height=350, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.update_layout(title="Frequência de Meses Sorteados", xaxis_title="Mês", yaxis_title="Frequência",
+                      template="plotly_white", height=350,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_patterns(patterns, theme):
-    fig = make_subplots(rows=2, cols=2, subplot_titles=("Proporção Ímpar/Par", "Números Primos", "Distribuição da Soma", "Resumo Médias"), specs=[[{"type":"histogram"},{"type":"histogram"}],[{"type":"histogram"},{"type":"indicator"}]])
+    fig = make_subplots(rows=2, cols=2,
+                        subplot_titles=("Proporção Ímpar/Par", "Números Primos", "Distribuição da Soma", "Resumo Médias"),
+                        specs=[[{"type": "histogram"}, {"type": "histogram"}],
+                               [{"type": "histogram"}, {"type": "indicator"}]])
     fig.add_trace(go.Histogram(x=patterns["impar_ratios"], nbinsx=20, marker_color=theme["accent"], name="Ímpar/Par"), row=1, col=1)
     fig.add_trace(go.Histogram(x=patterns["prime_counts"], nbinsx=20, marker_color="#FF6B6B", name="Primos"), row=1, col=2)
     fig.add_trace(go.Histogram(x=patterns["sums"], nbinsx=30, marker_color="#4ECDC4", name="Soma"), row=2, col=1)
-    fig.add_trace(go.Indicator(mode="number", value=patterns["impar_ratio_mean"], title={"text":"Média Ímpar/Par"}, number={"valueformat":".2%"}), row=2, col=2)
-    fig.update_layout(height=600, showlegend=False, template="plotly_white", paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]), title_text="Padrões Comportamentais")
+    fig.add_trace(go.Indicator(mode="number", value=patterns["impar_ratio_mean"],
+                               title={"text": "Média Ímpar/Par"}, number={"valueformat": ".2%"}), row=2, col=2)
+    fig.update_layout(height=600, showlegend=False, template="plotly_white", title_text="Padrões Comportamentais",
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_sum_distribution(patterns, theme):
@@ -1420,15 +1775,21 @@ def plot_sum_distribution(patterns, theme):
     fig.add_vline(x=mean, line_dash="dash", line_color="red", annotation_text=f"Média: {mean:.1f}")
     fig.add_vline(x=mean + std, line_dash="dot", line_color="orange", annotation_text="+1σ")
     fig.add_vline(x=mean - std, line_dash="dot", line_color="orange", annotation_text="-1σ")
-    fig.update_layout(title="Histograma da Soma das Dezenas", xaxis_title="Soma", yaxis_title="Frequência", template="plotly_white", height=420, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.update_layout(title="Histograma da Soma das Dezenas", xaxis_title="Soma", yaxis_title="Frequência",
+                      template="plotly_white", height=420,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_prime_impar_summary(patterns, theme):
-    fig = make_subplots(rows=1, cols=2, subplot_titles=("Média Ímpar/Par", "Média Primos"), specs=[[{"type":"pie"},{"type":"indicator"}]])
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("Média Ímpar/Par", "Média Primos"),
+                        specs=[[{"type": "pie"}, {"type": "indicator"}]])
     imp = patterns["impar_ratio_mean"]
-    fig.add_trace(go.Pie(labels=["Ímpares","Pares"], values=[imp, 1-imp], marker_colors=[theme["accent"],"#FF6B6B"], hole=0.4), row=1, col=1)
-    fig.add_trace(go.Indicator(mode="number", value=patterns["prime_mean"], title={"text":"Primos/sorteio"}, number={"valueformat":".2f"}), row=1, col=2)
-    fig.update_layout(height=380, template="plotly_white", paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.add_trace(go.Pie(labels=["Ímpares", "Pares"], values=[imp, 1 - imp],
+                         marker_colors=[theme["accent"], "#FF6B6B"], hole=0.4), row=1, col=1)
+    fig.add_trace(go.Indicator(mode="number", value=patterns["prime_mean"],
+                               title={"text": "Primos/sorteio"}, number={"valueformat": ".2f"}), row=1, col=2)
+    fig.update_layout(height=380, template="plotly_white",
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_backtest_results(results, theme):
@@ -1437,19 +1798,27 @@ def plot_backtest_results(results, theme):
     labels = [p[0] for p in pairs]
     values = [p[1] for p in pairs]
     fig = go.Figure(data=[go.Bar(x=labels, y=values, marker_color=theme["accent"], text=values, textposition="auto")])
-    fig.update_layout(title="Resultado do Backtesting (Ordem Crescente)", xaxis_title="Categoria de Prêmio", yaxis_title="Ocorrências", template="plotly_white", height=400, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.update_layout(title="Resultado do Backtesting", xaxis_title="Categoria de Prêmio", yaxis_title="Ocorrências",
+                      template="plotly_white", height=400,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_scores_bar(scores_list, theme):
-    fig = go.Figure(data=[go.Bar(x=list(range(1, len(scores_list)+1)), y=scores_list, marker_color=theme["accent"], text=scores_list, textposition="auto")])
-    fig.update_layout(title="Score de Confiança por Aposta", xaxis_title="Aposta #", yaxis_title="Score (0-100)", template="plotly_white", height=350, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig = go.Figure(data=[go.Bar(x=list(range(1, len(scores_list) + 1)), y=scores_list,
+                                 marker_color=theme["accent"], text=scores_list, textposition="auto")])
+    fig.update_layout(title="Score de Confiança por Aposta", xaxis_title="Aposta #", yaxis_title="Score (0-100)",
+                      template="plotly_white", height=350,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_cycle_completion(cycle, total, theme):
     seen = len(cycle["seen"])
     missing = len(cycle["missing"])
-    fig = go.Figure(data=[go.Pie(labels=["Vistas no ciclo", "Faltando"], values=[seen, missing], marker_colors=[theme["accent"], "#FF6B6B"], hole=0.4)])
-    fig.update_layout(title=f"Ciclo de Completude: {cycle['completion_pct']}%", height=350, template="plotly_white", paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig = go.Figure(data=[go.Pie(labels=["Vistas no ciclo", "Faltando"], values=[seen, missing],
+                                 marker_colors=[theme["accent"], "#FF6B6B"], hole=0.4)])
+    fig.update_layout(title=f"Ciclo de Completude: {cycle['completion_pct']}%", height=350,
+                      template="plotly_white",
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_reduction_steps(steps, theme):
@@ -1459,7 +1828,9 @@ def plot_reduction_steps(steps, theme):
     fig = go.Figure()
     fig.add_trace(go.Bar(x=labels, y=restantes, marker_color=theme["accent"], name="Restantes", text=restantes, textposition="auto"))
     fig.add_trace(go.Bar(x=labels, y=reduzidas, marker_color="#FF6B6B", name="Reduzidas", text=reduzidas, textposition="auto"))
-    fig.update_layout(title="Redução Progressiva de Combinações", xaxis_title="Filtro aplicado", yaxis_title="Quantidade", template="plotly_white", height=400, barmode="stack", paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]), showlegend=True)
+    fig.update_layout(title="Redução Progressiva de Combinações", xaxis_title="Filtro aplicado", yaxis_title="Quantidade",
+                      template="plotly_white", height=400, barmode="stack",
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]), showlegend=True)
     return fig
 
 def plot_coverage_chart(coverage_data, pick, premios, theme):
@@ -1470,8 +1841,12 @@ def plot_coverage_chart(coverage_data, pick, premios, theme):
     for idx, t in enumerate(prize_levels):
         vals = [r.get(f"{t}_count", 0) for r in coverage_data]
         if any(v > 0 for v in vals):
-            fig.add_trace(go.Bar(x=acertadas, y=vals, name=premios[t], marker_color=colors[idx % len(colors)], text=vals, textposition="auto"))
-    fig.update_layout(title="Garantia de Prêmios por Número de Acertos", xaxis_title="Se X de suas dezenas forem sorteadas", yaxis_title="Quantidade de apostas premiadas", template="plotly_white", height=400, barmode="group", paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+            fig.add_trace(go.Bar(x=acertadas, y=vals, name=premios[t],
+                                 marker_color=colors[idx % len(colors)], text=vals, textposition="auto"))
+    fig.update_layout(title="Garantia de Prêmios por Número de Acertos",
+                      xaxis_title="Se X de suas dezenas forem sorteadas", yaxis_title="Quantidade de apostas premiadas",
+                      template="plotly_white", height=400, barmode="group",
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
 
 def plot_cost_vs_numbers(cfg, theme):
@@ -1482,10 +1857,13 @@ def plot_cost_vs_numbers(cfg, theme):
     costs = [comb(n, pick) * custo_unit for n in nums]
     bets = [comb(n, pick) for n in nums]
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=[f"{n} dezenas" for n in nums], y=costs, marker_color=theme["accent"], text=[f"R$ {c:,.2f}\n({b} apostas)" for c, b in zip(costs, bets)], textposition="auto"))
-    fig.update_layout(title=f"Custo Total do Desdobramento — {pick}+ dezenas (R$ {custo_unit:.2f}/aposta)", xaxis_title="Número de dezenas jogadas", yaxis_title="Custo total (R$)", template="plotly_white", height=400, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+    fig.add_trace(go.Bar(x=[f"{n} dezenas" for n in nums], y=costs, marker_color=theme["accent"],
+                         text=[f"R$ {c:,.2f}\n({b} apostas)" for c, b in zip(costs, bets)], textposition="auto"))
+    fig.update_layout(title=f"Custo Total do Desdobramento — {pick}+ dezenas (R$ {custo_unit:.2f}/aposta)",
+                      xaxis_title="Número de dezenas jogadas", yaxis_title="Custo total (R$)",
+                      template="plotly_white", height=400,
+                      paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
-
 # === MAIN APP ===
 def main():
     st.set_page_config(page_title="Motor Analítico de Loterias", page_icon="🎲", layout="wide")
@@ -1497,7 +1875,9 @@ def main():
 
     with st.sidebar:
         st.header("⚙️ Configurações")
-        st.session_state["theme"] = st.radio("Tema", ["Branco","Azul"], index=0 if st.session_state.get("theme","Branco")=="Branco" else 1, key="theme_radio")
+        st.session_state["theme"] = st.radio("Tema", ["Branco", "Azul"],
+                                             index=0 if st.session_state.get("theme", "Branco") == "Branco" else 1,
+                                             key="theme_radio")
         theme = get_theme()
         apply_theme_css()
         st.divider()
@@ -1510,7 +1890,7 @@ def main():
         if st.button("🔄 Buscar dados da Caixa", key="fetch_caixa_button", type="secondary"):
             with st.spinner(f"Buscando {n_concursos_api} concursos da {lottery_name} na Caixa..."):
                 df_caixa = fetch_caixa_history(lottery_name, n_concursos_api)
-                if df_caixa is not None and len(df_cixa) > 0:
+                if df_caixa is not None and len(df_caixa) > 0:
                     st.session_state["df_caixa"] = df_caixa
                     st.session_state["data_source"] = "caixa"
                     st.sidebar.success(f"✅ {len(df_caixa)} concursos reais carregados!")
@@ -1518,12 +1898,12 @@ def main():
                     st.sidebar.error("❌ Não foi possível buscar dados da Caixa. Usando fallback.")
         st.divider()
         st.markdown("**📁 Ou suba um arquivo**")
-        uploaded_file = st.file_uploader("CSV ou Excel", type=["csv","xlsx","xls"], key="file_uploader")
+        uploaded_file = st.file_uploader("CSV ou Excel", type=["csv", "xlsx", "xls"], key="file_uploader")
         use_mock = st.checkbox("Usar dados mockados como fallback", value=True, key="use_mock_checkbox")
         st.divider()
         st.subheader("🎲 Gerador de Apostas")
         n_bets = st.slider("Número de apostas", 1, 50, 10, key="n_bets_slider")
-        strategy = st.selectbox("Estratégia", ["híbrido","frequentes","atrasadas","aleatória"], index=0, key="strategy_select")
+        strategy = st.selectbox("Estratégia", ["híbrido", "frequentes", "atrasadas", "aleatória"], index=0, key="strategy_select")
         w_freq = st.slider("Peso Frequência", 0.0, 1.0, 0.4, 0.05, key="weight_freq_slider")
         w_delay = st.slider("Peso Atraso", 0.0, 1.0, 0.3, 0.05, key="weight_delay_slider")
         w_pairs = st.slider("Peso Pares Fortes", 0.0, 1.0, 0.3, 0.05, key="weight_pairs_slider")
@@ -1571,7 +1951,7 @@ def main():
     st.markdown(f"""
     <div class="main-header">
         <div class="main-title">🎲 Motor Analítico & Gerador de Apostas</div>
-        <div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA · IA · Desdobramento</div>
+        <div class="main-subtitle">API Caixa · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · ML Preditivo · Sazonal · Mandel · PWA · PDF · WhatsApp · IA · Desdobramento</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1605,8 +1985,8 @@ def main():
 
     st.divider()
 
-    tab_gerador, tab_conferidor, tab_fechamento, tab_multipla, tab_mandel, tab_padroes, tab_backtest, tab_dados, tab_assistente = st.tabs([
-        "🎰 Gerador", "✅ Conferidor", "🔢 Line Reduction", "🎲 Apostas Múltiplas", "🎯 Estratégia Mandel", "📊 Padrões", "🔬 Backtesting", "📋 Dados", "🤖 Assistente IA"
+    tab_gerador, tab_conferidor, tab_fechamento, tab_multipla, tab_mandel, tab_padroes, tab_ia_extra, tab_backtest, tab_dados, tab_assistente = st.tabs([
+        "🎰 Gerador", "✅ Conferidor", "🔢 Line Reduction", "🎲 Apostas Múltiplas", "🎯 Estratégia Mandel", "📊 Padrões", "🤖 IA Preditiva + Sazonal", "🔬 Backtesting", "📋 Dados", "💬 Assistente IA"
     ])
 
     with tab_gerador:
@@ -1619,8 +1999,10 @@ def main():
                 max_attempts = 3
                 for attempt in range(max_attempts):
                     bets, scores_list, freq_g, delays_g, real_pairs, patterns, quadrants, cycle_g, trevos_bets, mes_bets, rejection_reasons = generate_bets(
-                        lottery_name, draws_matrix, n_bets=n_bets, strategy=strategy, weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs,
-                        trevos_matrix=trevos_matrix, meses_series=meses_series, decay=decay_factor, min_hot=min_hot, exclude_cold=exclude_cold,
+                        lottery_name, draws_matrix, n_bets=n_bets, strategy=strategy,
+                        weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs,
+                        trevos_matrix=trevos_matrix, meses_series=meses_series, decay=decay_factor,
+                        min_hot=min_hot, exclude_cold=exclude_cold,
                         hot_set=hot_cold_data["hot_set"], cold_set=hot_cold_data["cold_set"])
                     old_bets = st.session_state.get("bets", [])
                     if bets_are_unique(bets, old_bets) or attempt == max_attempts - 1:
@@ -1712,20 +2094,24 @@ def main():
                 mf = compute_meses_frequency(meses_series, cfg["meses_total"])
                 st.plotly_chart(plot_meses_frequency(mf, cfg["meses_lista"], theme), use_container_width=True)
             st.subheader("🔗 Pares Fortes (Monte Carlo + Histórico)")
-            df_pairs = pd.DataFrame(strong_pairs, columns=["Par","Ocorrências"])
+            df_pairs = pd.DataFrame(strong_pairs, columns=["Par", "Ocorrências"])
             df_pairs["Dezena_A"] = df_pairs["Par"].apply(lambda x: x[0])
             df_pairs["Dezena_B"] = df_pairs["Par"].apply(lambda x: x[1])
-            st.dataframe(df_pairs[["Dezena_A","Dezena_B","Ocorrências"]].head(15), use_container_width=True, hide_index=True)
+            st.dataframe(df_pairs[["Dezena_A", "Dezena_B", "Ocorrências"]].head(15), use_container_width=True, hide_index=True)
             st.subheader("📥 Exportação")
             excel_data = export_to_excel(bets, freq_disp, delays_disp, strong_pairs, lottery_name, trevos_bets, mes_bets, scores_list)
-            st.download_button(label="📊 Baixar Excel (.xlsx)", data=excel_data, file_name=f"apostas_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="download_excel_apostas")
+            st.download_button(label="📊 Baixar Excel (.xlsx)", data=excel_data,
+                               file_name=f"apostas_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="download_excel_apostas")
             st.markdown("##### 📱 Compartilhar")
             col_sh1, col_sh2 = st.columns(2)
             with col_sh1:
                 if HAS_FPDF:
                     pdf_data = export_to_pdf(bets, lottery_name, scores_list, trevos_bets, mes_bets)
                     if pdf_data:
-                        st.download_button(label="📄 Baixar PDF do Volante", data=pdf_data, file_name=f"volante_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf", mime="application/pdf", key="download_pdf_apostas")
+                        st.download_button(label="📄 Baixar PDF do Volante", data=pdf_data,
+                                           file_name=f"volante_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                                           mime="application/pdf", key="download_pdf_apostas")
                 else:
                     st.warning("Instale fpdf2 para exportar PDF")
             with col_sh2:
@@ -1782,7 +2168,10 @@ def main():
                 mes_bets = st.session_state.get("mes_bets", [])
                 st.divider()
                 st.subheader("🎯 Conferência das suas Apostas")
-                df_conf = conferir_apostas(bets, dezenas_sort, lottery_name, trevos_bets if trevos_bets else None, mes_bets if mes_bets else None, trevos_sort, mes_sort)
+                df_conf = conferir_apostas(bets, dezenas_sort, lottery_name,
+                                           trevos_bets if trevos_bets else None,
+                                           mes_bets if mes_bets else None,
+                                           trevos_sort, mes_sort)
                 st.dataframe(df_conf, use_container_width=True, hide_index=True)
                 tem_premio = df_conf[df_conf["Prêmio"] != "-"]
                 if not tem_premio.empty:
@@ -1797,6 +2186,11 @@ def main():
                     metric_card("Média de Acertos", f"{df_conf['Acertos'].mean():.1f}", "por aposta")
                 with col_c3:
                     metric_card("Apostas Premiadas", len(tem_premio), "neste sorteio")
+                # Conferência automática do histórico de desempenho
+                if "historico_apostas" in st.session_state and st.session_state["historico_apostas"]:
+                    novas_premiadas = conferir_historico_contra_sorteio(lottery_name, sorteio, cfg)
+                    if novas_premiadas > 0:
+                        st.success(f"🎉 {novas_premiadas} aposta(s) registrada(s) anteriormente foi(ram) premiada(s) neste concurso! Veja na aba IA Preditiva.")
             else:
                 st.info("Gere apostas na aba **Gerador** primeiro para conferir com este sorteio.")
         else:
@@ -1850,7 +2244,13 @@ def main():
                     filters["min_pares_fortes"] = st.slider("Mín. pares fortes", 0, 10, 2, key="lr_min_pares")
             quadrants_lr = compute_quadrants(cfg["dezenas_total"], 4)
             strong_pairs_lr = st.session_state.get("strong_pairs", [])
-            filtered_combos, steps = apply_progressive_filters(all_combos, filters, freq=st.session_state.get("freq", freq), delays=st.session_state.get("delays", delays), strong_pairs=strong_pairs_lr, hot_set=hot_cold_data["hot_set"], cold_set=hot_cold_data["cold_set"], quadrants=quadrants_lr, custo_unit=custo_unit)
+            filtered_combos, steps = apply_progressive_filters(all_combos, filters,
+                                                               freq=st.session_state.get("freq", freq),
+                                                               delays=st.session_state.get("delays", delays),
+                                                               strong_pairs=strong_pairs_lr,
+                                                               hot_set=hot_cold_data["hot_set"],
+                                                               cold_set=hot_cold_data["cold_set"],
+                                                               quadrants=quadrants_lr, custo_unit=custo_unit)
             st.divider()
             final_count = len(filtered_combos)
             economia_total = (total_orig - final_count) * custo_unit
@@ -1878,11 +2278,15 @@ def main():
                 else:
                     st.warning(f"Muitas combinações ({final_count:,}) para exibir. Use mais filtros ou baixe o Excel.")
                 excel_lr = export_to_excel(filtered_combos, st.session_state.get("freq", freq), st.session_state.get("delays", delays), strong_pairs_lr, lottery_name)
-                st.download_button(label="📊 Baixar Excel", data=excel_lr, file_name=f"line_reduction_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="download_excel_lr")
+                st.download_button(label="📊 Baixar Excel", data=excel_lr,
+                                   file_name=f"line_reduction_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="download_excel_lr")
                 if HAS_FPDF:
                     pdf_lr = export_to_pdf(filtered_combos, lottery_name)
                     if pdf_lr:
-                        st.download_button(label="📄 Baixar PDF", data=pdf_lr, file_name=f"fechamento_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf", mime="application/pdf", key="download_pdf_lr")
+                        st.download_button(label="📄 Baixar PDF", data=pdf_lr,
+                                           file_name=f"fechamento_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                                           mime="application/pdf", key="download_pdf_lr")
                 wa_url_lr = whatsapp_share_url(filtered_combos, lottery_name)
                 st.markdown(f"""<a href="{wa_url_lr}" target="_blank" style='display:inline-block;padding:8px 16px;background:#25D366;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:0.85rem;margin-top:8px;'>💬 Compartilhar no WhatsApp</a>""", unsafe_allow_html=True)
                 st.divider()
@@ -2017,7 +2421,13 @@ def main():
                             filters_multipla["min_pares_fortes"] = st.slider("Mín. pares", 0, 10, 2, key="ml_min_pares")
                     quadrants_ml = compute_quadrants(cfg["dezenas_total"], 4)
                     strong_pairs_ml = st.session_state.get("strong_pairs", [])
-                    filtered_multipla, steps_multipla = apply_progressive_filters(todas_combos, filters_multipla, freq=st.session_state.get("freq", freq), delays=st.session_state.get("delays", delays), strong_pairs=strong_pairs_ml, hot_set=hot_cold_data["hot_set"], cold_set=hot_cold_data["cold_set"], quadrants=quadrants_ml, custo_unit=custo_unit)
+                    filtered_multipla, steps_multipla = apply_progressive_filters(todas_combos, filters_multipla,
+                                                                                  freq=st.session_state.get("freq", freq),
+                                                                                  delays=st.session_state.get("delays", delays),
+                                                                                  strong_pairs=strong_pairs_ml,
+                                                                                  hot_set=hot_cold_data["hot_set"],
+                                                                                  cold_set=hot_cold_data["cold_set"],
+                                                                                  quadrants=quadrants_ml, custo_unit=custo_unit)
                     final_multipla = filtered_multipla
                     final_count_multipla = len(final_multipla)
                     economia_multipla = (len(todas_combos) - final_count_multipla) * custo_unit
@@ -2047,12 +2457,16 @@ def main():
                 col_ex1, col_ex2, col_ex3 = st.columns(3)
                 with col_ex1:
                     excel_multipla = export_to_excel(final_multipla, st.session_state.get("freq", freq), st.session_state.get("delays", delays), st.session_state.get("strong_pairs", []), lottery_name)
-                    st.download_button(label="📊 Excel", data=excel_multipla, file_name=f"desdobramento_{lottery_name}_{n_dezenas}dezenas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="download_excel_multipla")
+                    st.download_button(label="📊 Excel", data=excel_multipla,
+                                       file_name=f"desdobramento_{lottery_name}_{n_dezenas}dezenas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="download_excel_multipla")
                 with col_ex2:
                     if HAS_FPDF:
                         pdf_multipla = export_to_pdf(final_multipla, lottery_name)
                         if pdf_multipla:
-                            st.download_button(label="📄 PDF", data=pdf_multipla, file_name=f"desdobramento_{lottery_name}_{n_dezenas}dezenas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf", mime="application/pdf", key="download_pdf_multipla")
+                            st.download_button(label="📄 PDF", data=pdf_multipla,
+                                               file_name=f"desdobramento_{lottery_name}_{n_dezenas}dezenas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                                               mime="application/pdf", key="download_pdf_multipla")
                 with col_ex3:
                     wa_url_multipla = whatsapp_share_url(final_multipla[:10], lottery_name)
                     st.markdown(f"""<a href="{wa_url_multipla}" target="_blank" style='display:inline-block;padding:8px 16px;background:#25D366;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:0.85rem;'>💬 WhatsApp</a>""", unsafe_allow_html=True)
@@ -2177,6 +2591,89 @@ def main():
                 st.caption("Dezenas com P > 30% recebem +10% no score do gerador.")
             st.plotly_chart(plot_markov_ranking(markov_data, cfg["dezenas_total"], theme), use_container_width=True)
 
+    with tab_ia_extra:
+        st.header("🤖 IA Preditiva + Análise Sazonal")
+        st.markdown("**Machine Learning** aplicado ao histórico para classificar dezenas prováveis, combinado com padrões sazonais.")
+        st.subheader("🧠 Predição por Machine Learning")
+        with st.spinner("Treinando modelo preditivo..."):
+            ml_data = compute_ml_predictions(draws_matrix, cfg["dezenas_total"], freq, delays, gap_data, hot_cold_data, markov_data)
+        if ml_data:
+            st.caption(f"Modelo: **{ml_data['metodo']}**")
+            col_ml1, col_ml2 = st.columns([2, 1])
+            with col_ml1:
+                probs_lista = ml_data["probs_lista"][:20]
+                fig_ml = go.Figure(data=[go.Bar(
+                    x=[str(n) for n, p in probs_lista],
+                    y=[p for n, p in probs_lista],
+                    marker_color=["#FF4444" if n in hot_cold_data["hot_set"] else theme["accent"] for n, p in probs_lista],
+                    text=[f"{p}%" for n, p in probs_lista], textposition="auto")])
+                fig_ml.update_layout(title="Top 20 Dezenas por Probabilidade ML", xaxis_title="Dezena", yaxis_title="Prob. (%)",
+                                     template="plotly_white", height=400,
+                                     paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+                st.plotly_chart(fig_ml, use_container_width=True)
+            with col_ml2:
+                st.markdown("##### 🎯 Dezenas Prováveis")
+                provaveis = ml_data["top_provaveis"][:cfg["dezenas_aposta"] * 2]
+                st.markdown("**Sugestão principal:** " + ", ".join(str(n) for n in provaveis[:cfg["dezenas_aposta"]]))
+                st.markdown("**Alternativas:** " + ", ".join(str(n) for n in provaveis[cfg["dezenas_aposta"]:]))
+                st.markdown("##### 📊 Importância das Features")
+                imp_sorted = sorted(ml_data["importancias"].items(), key=lambda x: x[1], reverse=True)
+                st.dataframe(pd.DataFrame([{"Feature": k, "Importância": f"{v * 100:.1f}%"} for k, v in imp_sorted]),
+                             use_container_width=True, hide_index=True)
+        else:
+            st.warning("Histórico insuficiente para treinar o modelo (mín. 50 sorteios).")
+        st.divider()
+        st.subheader("📅 Análise Sazonal")
+        seasonal = compute_seasonal_analysis(df_data, draws_matrix, cfg["dezenas_total"], lottery_name)
+        if seasonal.get("tem_data"):
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                fig_mes = plot_seasonal_mes(seasonal, theme)
+                if fig_mes:
+                    st.plotly_chart(fig_mes, use_container_width=True)
+            with col_s2:
+                fig_dia = plot_seasonal_dia(seasonal, theme)
+                if fig_dia:
+                    st.plotly_chart(fig_dia, use_container_width=True)
+            st.markdown("##### 🔍 Top 5 por Faixa de Concursos")
+            faixa_rows = []
+            for nome, dados in seasonal["por_faixa"].items():
+                faixa_rows.append({"Faixa": nome, "Concursos": f"{dados['inicio']+1}-{dados['fim']}", "Top 5 Dezenas": ", ".join(str(n) for n in dados["top5"])})
+            st.dataframe(pd.DataFrame(faixa_rows), use_container_width=True, hide_index=True)
+        else:
+            st.info(seasonal.get("mensagem", "Dados insuficientes."))
+        st.divider()
+        st.subheader("🏆 Melhores Combinações (pré-calculadas)")
+        if st.button("⚡ Gerar Top Combinações", key="btn_melhores"):
+            with st.spinner("Testando estratégias e sementes..."):
+                melhores = gerar_melhores_combinacoes(lottery_name, draws_matrix, n_top=10, trevos_matrix=trevos_matrix, meses_series=meses_series)
+                st.session_state["melhores_combinacoes"] = melhores
+        if "melhores_combinacoes" in st.session_state and st.session_state["melhores_combinacoes"]:
+            melhores = st.session_state["melhores_combinacoes"]
+            rows_top = []
+            for i, m in enumerate(melhores[:10]):
+                rows_top.append({"#": i + 1, "Dezenas": " - ".join(f"{n:02d}" for n in m["bet"]), "Score": m["score"], "Estratégia": m["estrategia"]})
+            st.dataframe(pd.DataFrame(rows_top), use_container_width=True, hide_index=True)
+            st.caption("As 10 melhores combinações encontradas entre 3 estratégias × 5 sementes (150 apostas testadas).")
+        st.divider()
+        st.subheader("📈 Histórico de Desempenho das Apostas")
+        if "bets" in st.session_state and st.session_state["bets"]:
+            if st.button("💾 Registrar Apostas Atuais no Histórico", key="btn_registrar_historico"):
+                registrar_apostas_no_historico(lottery_name, st.session_state["bets"],
+                                               st.session_state.get("scores_list", []),
+                                               st.session_state.get("trevos_bets", []),
+                                               st.session_state.get("mes_bets", []))
+                st.success("Apostas registradas! Elas serão conferidas automaticamente quando você buscar um sorteio no Conferidor.")
+        df_hist = historico_para_dataframe()
+        if not df_hist.empty:
+            st.dataframe(df_hist, use_container_width=True, hide_index=True)
+            csv_hist = df_hist.to_csv(index=False).encode("utf-8")
+            st.download_button("📥 Baixar Histórico (CSV)", csv_hist,
+                               file_name=f"historico_apostas_{datetime.now().strftime('%Y%m%d')}.csv",
+                               mime="text/csv", key="download_historico")
+        else:
+            st.info("Nenhuma aposta registrada ainda. Gere apostas e clique em 'Registrar no Histórico'.")
+
     with tab_backtest:
         st.header("🔬 Backtesting & Análise de ROI")
         if "bets" not in st.session_state or not st.session_state["bets"]:
@@ -2195,7 +2692,9 @@ def main():
             with col_bt2:
                 if st.button("📊 Comparar Estratégias", type="secondary", key="comparar_estrategias_button"):
                     with st.spinner("Comparando as 4 estratégias..."):
-                        df_comp = compare_strategies(lottery_name, draws_matrix, n_bets=n_bets, weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs, trevos_matrix=trevos_matrix, meses_series=meses_series, decay=decay_factor)
+                        df_comp = compare_strategies(lottery_name, draws_matrix, n_bets=n_bets,
+                                                     weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs,
+                                                     trevos_matrix=trevos_matrix, meses_series=meses_series, decay=decay_factor)
                         st.session_state["df_comparacao"] = df_comp
             if "backtest_results" in st.session_state:
                 results = st.session_state["backtest_results"]
@@ -2244,8 +2743,11 @@ def main():
                 st.dataframe(df_comp_display, use_container_width=True, hide_index=True)
                 fig_comp = go.Figure()
                 colors = ["#28a745" if v >= 0 else "#dc3545" for v in df_comp["ROI %"]]
-                fig_comp.add_trace(go.Bar(x=df_comp["Estratégia"], y=df_comp["ROI %"], marker_color=colors, text=[f"{v:+.1f}%" for v in df_comp["ROI %"]], textposition="auto"))
-                fig_comp.update_layout(title="ROI por Estratégia (%)", xaxis_title="Estratégia", yaxis_title="ROI %", template="plotly_white", height=350, paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
+                fig_comp.add_trace(go.Bar(x=df_comp["Estratégia"], y=df_comp["ROI %"], marker_color=colors,
+                                          text=[f"{v:+.1f}%" for v in df_comp["ROI %"]], textposition="auto"))
+                fig_comp.update_layout(title="ROI por Estratégia (%)", xaxis_title="Estratégia", yaxis_title="ROI %",
+                                       template="plotly_white", height=350,
+                                       paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
                 st.plotly_chart(fig_comp, use_container_width=True)
                 st.caption("Verde = ROI positivo (lucro). Vermelho = ROI negativo (prejuízo). Prêmios estimados com valores médios históricos.")
 
@@ -2258,7 +2760,7 @@ def main():
             st.dataframe(df_data.describe(), use_container_width=True)
 
     with tab_assistente:
-        st.header("🤖 Assistente IA")
+        st.header("💬 Assistente IA")
         st.markdown("Pergunte sobre as análises, apostas geradas, estratégias e padrões.")
         st.caption("⚠️ Este assistente usa os dados calculados pelo motor. Não aumenta chances reais de ganhar.")
         use_openai = False
@@ -2278,7 +2780,8 @@ def main():
             "bets": st.session_state.get("bets", []), "scores_list": st.session_state.get("scores_list", []),
             "roi_data": st.session_state.get("backtest_roi", {}), "draws_matrix": draws_matrix, "total": cfg["dezenas_total"],
         }
-        full_context = build_analysis_context(lottery_name, cfg, draws_matrix, freq, delays, gap_data, hot_cold_data, cycle, markov_data, alerts, st.session_state.get("bets"), st.session_state.get("scores_list"), st.session_state.get("backtest_roi"))
+        full_context = build_analysis_context(lottery_name, cfg, draws_matrix, freq, delays, gap_data, hot_cold_data, cycle, markov_data, alerts,
+                                              st.session_state.get("bets"), st.session_state.get("scores_list"), st.session_state.get("backtest_roi"))
         st.markdown("##### 💡 Perguntas sugeridas:")
         suggestions = ["Por que esses números foram escolhidos?", "Quais as dezenas mais atrasadas?", "Quais as mais frequentes?", "Probabilidades do Markov", "Status do ciclo", "Alertas ativos", "Resultado do ROI", "Comparar estratégias"]
         cols_sug = st.columns(4)
@@ -2324,8 +2827,20 @@ def main():
                 st.rerun()
 
     st.divider()
-    st.markdown(f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · PWA · PDF · WhatsApp · IA · Desdobramento · {datetime.now().year} · Jogue com responsabilidade · Ligue 188 (CVV).</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='text-align:center;opacity:0.6;font-size:0.8rem;'>Motor Analítico de Loterias · Score · Ciclo · Hot/Cold · Gap Analysis · Janela Deslizante · Alertas · ROI · Line Reduction · Markov · ML Preditivo · Sazonal · Mandel · PWA · PDF · WhatsApp · IA · Desdobramento · {datetime.now().year} · Jogue com responsabilidade · Ligue 188 (CVV).</div>", unsafe_allow_html=True)
     render_lgpd_consent()
 
 if __name__ == "__main__":
     main()
+
+# requirements.txt
+# streamlit
+# pandas
+# numpy
+# plotly
+# requests
+# xlsxwriter
+# openpyxl
+# fpdf2
+# openai
+# scikit-learn
