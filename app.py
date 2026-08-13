@@ -1,3 +1,4 @@
+# ===Parte 01===
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -111,6 +112,14 @@ LOTTERIES = {
         "tem_trevos": False, "tem_mes": False, "custo_aposta": 2.50,
         "max_dezenas_aposta": 7,
     },
+    "🎛️ Customizada": {
+        "dezenas_total": 60, "dezenas_aposta": 6, "max_acertos": 6,
+        "premios": {4: "4 Acertos", 5: "5 Acertos", 6: "6 Acertos"},
+        "color": "gray", "api_slug": "megasena",
+        "tem_trevos": False, "tem_mes": False, "custo_aposta": 5.00,
+        "max_dezenas_aposta": 15,
+        "custom": True,
+    },
 }
 
 PREMIOS_ESTIMADOS = {
@@ -123,6 +132,7 @@ PREMIOS_ESTIMADOS = {
     "Timemania": {"7 Acertos": 500000, "6 Acertos": 30000, "5 Acertos": 2000, "4 Acertos": 200, "3 Acertos": 10},
     "Dupla Sena": {"Sena": 1000000, "Quina": 20000, "Quadra": 1000, "Terno": 20},
     "Super Sete": {"7 Acertos": 200000, "6 Acertos": 10000, "5 Acertos": 500, "4 Acertos": 50, "3 Acertos": 5},
+    "🎛️ Customizada": {"6 Acertos": 50000000, "5 Acertos": 50000, "4 Acertos": 1500},
 }
 
 THEME_COLORS = {
@@ -346,6 +356,7 @@ def render_lgpd_consent():
             <button onclick="this.parentElement.style.display='none'" style="background:#1E90FF;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:bold;">Aceitar</button>
         </div>
         """, unsafe_allow_html=True)
+# === Parte 02 ===
 # === DATA INGESTION ===
 @st.cache_data(show_spinner=False)
 def generate_mock_data(lottery_name, n_draws=300):
@@ -696,6 +707,7 @@ def compute_alerts(total_numbers, gap_data, cycle):
     if cycle["completion_pct"] > 70 and len(cycle["missing"]) <= 5 and cycle["missing"]:
         alerts.append({"tipo": "ciclo_faltando_poucas", "severidade": "media", "icone": "🟡", "titulo": f"Apenas {len(cycle['missing'])} dezenas faltando no ciclo", "detalhe": f"Dezenas: {', '.join(str(m) for m in cycle['missing'])} recebem +15% no score"})
     return alerts
+# === Parte 03 ===
 # === ML PREDITIVO ===
 def compute_ml_predictions(draws_matrix, total_numbers, freq, delays, gap_data, hot_cold_data, markov_data):
     """Classifica cada dezena como provável/improvável usando ML (Random Forest) ou ensemble estatístico como fallback.
@@ -901,6 +913,29 @@ def historico_para_dataframe():
                 })
     return pd.DataFrame(rows)
 
+def historico_para_excel():
+    """Exporta o histórico de apostas e prêmios para arquivo Excel (.xlsx)."""
+    df_hist = historico_para_dataframe()
+    if df_hist.empty:
+        return None
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df_hist.to_excel(writer, sheet_name="Histórico de Apostas", index=False)
+        if "historico_apostas" in st.session_state:
+            detalhe_rows = []
+            for reg in st.session_state["historico_apostas"]:
+                for concurso, res in reg.get("resultados", {}).items():
+                    detalhe_rows.append({
+                        "Data": reg["data"], "Loteria": reg["loteria"],
+                        "Concurso": concurso, "Acertos": res["acertos"], "Prêmio": res["premio"],
+                    })
+            if detalhe_rows:
+                pd.DataFrame(detalhe_rows).to_excel(writer, sheet_name="Prêmios", index=False)
+        for sheet_name in writer.sheets:
+            writer.sheets[sheet_name].set_column(0, 10, 20)
+    output.seek(0)
+    return output
+
 # === MELHORES COMBINAÇÕES ===
 def gerar_melhores_combinacoes(lottery_name, draws_matrix, n_top=10, trevos_matrix=None, meses_series=None):
     """Gera as melhores combinações testando múltiplas sementes e estratégias."""
@@ -923,6 +958,7 @@ def gerar_melhores_combinacoes(lottery_name, draws_matrix, n_top=10, trevos_matr
         if len(unicos) >= n_top * 5:
             break
     return unicos[:n_top]
+# === Parte 04 ===
 # === ASSISTANT IA FUNCTIONS ===
 def build_analysis_context(lottery_name, cfg, draws_matrix, freq, delays, gap_data, hot_cold_data, cycle, markov_data, alerts, bets=None, scores_list=None, roi_data=None):
     total = cfg["dezenas_total"]
@@ -1052,11 +1088,14 @@ def local_assistant_response(question, context_data):
 
     return "🤖 Não entendi. Tente perguntar sobre: \"por que esses números?\", \"mais atrasadas?\", \"mais frequentes?\", \"probabilidades do markov\", \"alertas ativos\", \"resultado do roi\"."
 
-def openai_assistant_response(question, context, api_key):
+def openai_assistant_response(question, context, api_key, base_url=None, model="gpt-4o-mini"):
     if not HAS_OPENAI:
         return "Biblioteca openai não instalada. Adicione 'openai' ao requirements.txt"
     try:
-        client = OpenAI(api_key=api_key)
+        kwargs = {"api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        client = OpenAI(**kwargs)
         system_prompt = f"""Você é um assistente especializado em análise estatística de loterias da Caixa (Brasil).
 Use SEMPRE os dados fornecidos abaixo para responder. Não invente números.
 
@@ -1066,14 +1105,14 @@ DADOS DA ANÁLISE:
 IMPORTANTE: Lembre sempre que loteria é jogo de azar e os modelos não aumentam chances reais.
 Seja direto, técnico e objetivo. Use os dados fornecidos."""
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model,
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": question}],
             max_tokens=800,
             temperature=0.3,
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"Erro ao consultar IA: {e}. Verifique sua API key."
+        return f"Erro ao consultar IA: {e}. Verifique sua API key e configuração."
 
 # === BET GENERATION FUNCTIONS ===
 def is_bet_valid(bet, patterns, lottery_name, quadrants):
@@ -1259,6 +1298,7 @@ def bets_are_unique(new_bets, old_bets):
         return True
     old_set = {tuple(b) for b in old_bets}
     return all(tuple(b) not in old_set for b in new_bets)
+# === Parte 05 ===
 # === FILTERING FUNCTIONS ===
 def apply_progressive_filters(combinations, filters, freq=None, delays=None, strong_pairs=None, hot_set=None, cold_set=None, quadrants=None, custo_unit=5.0):
     steps = []
@@ -1279,7 +1319,8 @@ def apply_progressive_filters(combinations, filters, freq=None, delays=None, str
                 continue
             if f.get("max_impares") is not None and imp > f["max_impares"]:
                 continue
-            max_consec = cur = 1
+            max_consec = 1
+            cur = 1
             for i in range(1, len(c_sorted)):
                 if c_sorted[i] == c_sorted[i-1] + 1:
                     cur += 1
@@ -1318,7 +1359,7 @@ def apply_progressive_filters(combinations, filters, freq=None, delays=None, str
     ]
     for key, params, label_fn in filter_defs:
         if filters.get(key):
-            f_params = {k: filters.get(k2) if k != "excluir_cold" else True for k, k2 in params.items()}
+            f_params = {k: (filters.get(k2) if k != "excluir_cold" else True) for k, k2 in params.items()}
             if key == "quad_ativo" and not quadrants:
                 continue
             if key == "hot_ativo" and not hot_set:
@@ -1455,6 +1496,23 @@ def compare_strategies(lottery_name, draws_matrix, n_bets=10, weight_freq=0.4, w
         comparison.append({"Estratégia": strat.capitalize(), "Apostas": len(bets), "Prêmios Ganhos": total_premios, "Custo Total (R$)": roi_data["custo_total"], "Prêmios Total (R$)": roi_data["premios_total"], "ROI %": roi_data["roi_pct"], "Lucro/Prejuízo (R$)": roi_data["lucro_liquido"]})
     return pd.DataFrame(comparison)
 
+def export_comparacao_excel(df_comp, lottery_name):
+    """Exporta o relatório de comparação de estratégias (ROI) para Excel."""
+    if df_comp is None or df_comp.empty:
+        return None
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df_export = df_comp.copy()
+        df_export.to_excel(writer, sheet_name="Comparação de Estratégias", index=False)
+        workbook = writer.book
+        worksheet = writer.sheets["Comparação de Estratégias"]
+        header_fmt = workbook.add_format({"bold": True, "bg_color": "#1E90FF", "font_color": "white", "border": 1})
+        for col_num, col_name in enumerate(df_export.columns):
+            worksheet.write(0, col_num, col_name, header_fmt)
+        worksheet.set_column(0, len(df_export.columns) - 1, 24)
+    output.seek(0)
+    return output
+
 # === CONFERIDOR ===
 def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_bets=None, trevos_sort=None, mes_sort=None):
     cfg = LOTTERIES[lottery_name]
@@ -1476,6 +1534,7 @@ def conferir_apostas(bets, resultado_sort, lottery_name, trevos_bets=None, mes_b
             mes_acertou = (mes_bets[i] == mes_sort)
         resultados.append({"Aposta #": i + 1, "Dezenas": " - ".join(f"{n:02d}" for n in bet), "Acertos": hits, "Números Acertados": " - ".join(f"{n:02d}" for n in numeros_acertados) if numeros_acertados else "-", "Prêmio": label if label else "-", "Trevo Hits": trevo_hits if trevos_bets else "-", "Mês?": "✅" if mes_acertou else ("❌" if mes_bets else "-")})
     return pd.DataFrame(resultados)
+# === Parte 06 ===
 # === EXPORT FUNCTIONS ===
 def export_to_excel(bets, freq, delays, strong_pairs, lottery_name, trevos_bets=None, mes_bets=None, scores_list=None):
     cfg = LOTTERIES[lottery_name]
@@ -1867,6 +1926,7 @@ def plot_cost_vs_numbers(cfg, theme):
                       template="plotly_white", height=400,
                       paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
     return fig
+# === Parte 07 ===
 # === MAIN APP ===
 def main():
     st.set_page_config(page_title="Motor Analítico de Loterias", page_icon="🎲", layout="wide")
@@ -1886,6 +1946,15 @@ def main():
         st.divider()
         lottery_name = st.selectbox("🎯 Loteria", list(LOTTERIES.keys()), index=0, key="lottery_select")
         cfg = LOTTERIES[lottery_name]
+        if cfg.get("custom"):
+            st.subheader("🎛️ Configuração Personalizada")
+            cfg = dict(cfg)
+            cfg["dezenas_total"] = st.number_input("Total de dezenas (N)", 10, 200, 60, key="custom_total")
+            cfg["dezenas_aposta"] = st.number_input("Dezenas por aposta (K)", 3, 20, 6, key="custom_pick")
+            cfg["max_dezenas_aposta"] = st.number_input("Máx. dezenas (aposta múltipla)", cfg["dezenas_aposta"], 30, min(15, cfg["dezenas_total"]), key="custom_max")
+            cfg["custo_aposta"] = st.number_input("Custo por aposta (R$)", 1.0, 50.0, 5.0, 0.5, key="custom_custo")
+            cfg["premios"] = {i: f"{i} Acertos" for i in range(max(2, cfg["dezenas_aposta"] - 2), cfg["dezenas_aposta"] + 1)}
+            st.caption(f"Formato: sortear {cfg['dezenas_aposta']} dezenas de {cfg['dezenas_total']}")
         st.divider()
         st.subheader("📁 Fonte de Dados")
         st.markdown("**🌐 API da Caixa** (dados reais)")
@@ -2349,7 +2418,7 @@ def main():
             row["Total apostas"] = r["total_bets"]
             coverage_rows.append(row)
         st.dataframe(pd.DataFrame(coverage_rows), use_container_width=True, hide_index=True)
-        st.caption("Esta tabela mostra **exatamente** quantas apostas terão cada nível de prêmio,dependendo de quantas de suas dezenas forem sorteadas.")
+        st.caption("Esta tabela mostra **exatamente** quantas apostas terão cada nível de prêmio, dependendo de quantas de suas dezenas forem sorteadas.")
         st.markdown("---")
         st.subheader("🎯 Escolher Dezenas")
         st.markdown(f"Escolha **{n_dezenas} dezenas** para o desdobramento:")
@@ -2684,6 +2753,13 @@ def main():
             st.download_button("📥 Baixar Histórico (CSV)", csv_hist,
                                file_name=f"historico_apostas_{datetime.now().strftime('%Y%m%d')}.csv",
                                mime="text/csv", key="download_historico")
+            excel_hist = historico_para_excel()
+            if excel_hist:
+                st.download_button("📊 Baixar Histórico (Excel)",
+                                   excel_hist,
+                                   file_name=f"historico_apostas_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                   key="download_historico_excel")
         else:
             st.info("Nenhuma aposta registrada ainda. Gere apostas e clique em 'Registrar no Histórico'.")
 
@@ -2763,6 +2839,15 @@ def main():
                                        paper_bgcolor=theme["bg"], plot_bgcolor=theme["bg"], font=dict(color=theme["text"]))
                 st.plotly_chart(fig_comp, use_container_width=True)
                 st.caption("Verde = ROI positivo (lucro). Vermelho = ROI negativo (prejuízo). Prêmios estimados com valores médios históricos.")
+                excel_comp = export_comparacao_excel(df_comp, lottery_name)
+                if excel_comp:
+                    st.download_button(
+                        label="📊 Baixar Comparação (Excel)",
+                        data=excel_comp,
+                        file_name=f"comparacao_estrategias_{lottery_name.replace(' ','_').replace('+','mais')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_comparacao_excel",
+                    )
 
     with tab_dados:
         st.header("📋 Dados do Histórico")
@@ -2776,17 +2861,24 @@ def main():
         st.header("💬 Assistente IA")
         st.markdown("Pergunte sobre as análises, apostas geradas, estratégias e padrões.")
         st.caption("⚠️ Este assistente usa os dados calculados pelo motor. Não aumenta chances reais de ganhar.")
-        use_openai = False
+        provider = "Local"
         api_key_input = None
+        base_url = None
+        model_sel = "gpt-4o-mini"
         if HAS_OPENAI:
-            col_ai1, col_ai2 = st.columns([3, 1])
-            with col_ai2:
-                use_openai = st.checkbox("Usar OpenAI (API Key)", value=False, key="use_openai_check")
-            if use_openai:
+            col_ai1, col_ai2, col_ai3 = st.columns([2, 1, 1])
+            with col_ai3:
+                provider = st.selectbox("Provedor IA", ["Local", "OpenAI", "API Compatível (OpenAI)"], key="provider_select")
+            if provider != "Local":
                 with col_ai1:
-                    api_key_input = st.text_input("OpenAI API Key", type="password", key="openai_key_input")
+                    api_key_input = st.text_input("API Key", type="password", key="openai_key_input")
+                    if provider == "API Compatível (OpenAI)":
+                        base_url = st.text_input("Base URL", placeholder="https://api.groq.com/openai/v1 ou http://localhost:11434/v1", key="base_url_input")
+                        model_sel = st.text_input("Modelo", value="llama-3.3-70b-versatile", key="model_input")
+                    else:
+                        model_sel = st.selectbox("Modelo", ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo"], key="model_select")
         else:
-            st.info("💡 Modo local ativo. Instale `openai` para respostas com IA generativa avançada.")
+            st.info("💡 Modo local ativo. Instale `openai` para IA generativa.")
         context_data = {
             "lottery_name": lottery_name, "freq": freq, "delays": delays, "gap_data": gap_data,
             "hot_cold_data": hot_cold_data, "cycle": cycle, "markov_data": markov_data, "alerts": alerts,
@@ -2815,8 +2907,8 @@ def main():
                 st.markdown(pending)
             with st.chat_message("assistant"):
                 with st.spinner("Analisando..."):
-                    if use_openai and api_key_input:
-                        response = openai_assistant_response(pending, full_context, api_key_input)
+                    if provider != "Local" and api_key_input:
+                        response = openai_assistant_response(pending, full_context, api_key_input, base_url=base_url, model=model_sel)
                     else:
                         response = local_assistant_response(pending, context_data)
                 st.markdown(response)
@@ -2828,8 +2920,8 @@ def main():
                 st.markdown(user_input)
             with st.chat_message("assistant"):
                 with st.spinner("Analisando..."):
-                    if use_openai and api_key_input:
-                        response = openai_assistant_response(user_input, full_context, api_key_input)
+                    if provider != "Local" and api_key_input:
+                        response = openai_assistant_response(user_input, full_context, api_key_input, base_url=base_url, model=model_sel)
                     else:
                         response = local_assistant_response(user_input, context_data)
                 st.markdown(response)
