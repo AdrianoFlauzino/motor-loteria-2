@@ -1095,10 +1095,12 @@ def is_bet_valid(bet, patterns, lottery_name, quadrants):
             max_consec = max(max_consec, current_consec)
         else:
             current_consec = 1
-    if max_consec > 3:
-        return False, "Mais de 3 consecutivos"
+    max_consec_limit = max(3, pick // 2)
+    if max_consec > max_consec_limit:
+        return False, f"Mais de {max_consec_limit} consecutivos"
     qdist = count_quadrant_distribution(bet, quadrants)
-    if any(v > 4 for v in qdist.values()):
+    max_quad_limit = max(4, pick // 2)
+    if any(v > max_quad_limit for v in qdist.values()):
         return False, "Quadrante sobrecarregado"
     return True, "Válido"
 
@@ -1121,10 +1123,11 @@ def compute_bet_score(bet, freq, delays, pair_score_map, patterns, quadrants, to
     score = (0.30 * freq_score + 0.20 * delay_score + 0.20 * quad_score + 0.15 * sum_score + 0.15 * pair_score) * 100
     return min(100, max(0, round(score)))
 
-def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido", weight_freq=0.4, weight_delay=0.3, weight_pairs=0.3, trevos_matrix=None, meses_series=None, decay=0.95, min_hot=0, exclude_cold=False, hot_set=None, cold_set=None):
+def generate_bets(lottery_name, draws_matrix, n_bets=10, strategy="híbrido", weight_freq=0.4, weight_delay=0.3, weight_pairs=0.3, trevos_matrix=None, meses_series=None, decay=0.95, min_hot=0, exclude_cold=False, hot_set=None, cold_set=None, pick=None):
     cfg = LOTTERIES[lottery_name]
     total = cfg["dezenas_total"]
-    pick = cfg["dezenas_aposta"]
+    if pick is None:
+        pick = cfg["dezenas_aposta"]
     freq = compute_frequency(draws_matrix, total)
     freq_weighted = compute_weighted_frequency(draws_matrix, total, decay=decay)
     delays = compute_delays(draws_matrix, total)
@@ -1908,8 +1911,18 @@ def main():
         w_delay = st.slider("Peso Atraso", 0.0, 1.0, 0.3, 0.05, key="weight_delay_slider")
         w_pairs = st.slider("Peso Pares Fortes", 0.0, 1.0, 0.3, 0.05, key="weight_pairs_slider")
         st.divider()
+        st.subheader("🔢 Dezenas por Aposta")
+        n_dezenas_aposta = st.slider(
+            "Quantas dezenas por aposta?",
+            min_value=cfg["dezenas_aposta"],
+            max_value=cfg["max_dezenas_aposta"],
+            value=cfg["dezenas_aposta"],
+            key="n_dezenas_aposta_slider",
+        )
+        st.caption(f"Padrão: {cfg['dezenas_aposta']} dezenas | Máximo: {cfg['max_dezenas_aposta']} dezenas")
+        st.divider()
         st.subheader("🔥 Hot / Cold Numbers")
-        min_hot = st.slider("Mín. de Hot Numbers na aposta", 0, cfg["dezenas_aposta"], 0, key="min_hot_slider")
+        min_hot = st.slider("Mín. de Hot Numbers na aposta", 0, cfg["max_dezenas_aposta"], 0, key="min_hot_slider")
         exclude_cold = st.checkbox("Excluir Cold Numbers", value=False, key="exclude_cold_checkbox")
         st.divider()
         st.subheader("⚖️ Janela Deslizante")
@@ -1975,7 +1988,7 @@ def main():
     with col1:
         metric_card("Sorteios Analisados", n_draws, "Histórico")
     with col2:
-        metric_card("Dezenas / Aposta", cfg["dezenas_aposta"], lottery_name)
+        metric_card("Dezenas / Aposta", n_dezenas_aposta, lottery_name)
     with col3:
         extra = f" + {cfg['trevos_aposta']} trevos" if cfg.get("tem_trevos") else (" + 1 mês" if cfg.get("tem_mes") else "")
         metric_card("Universo", f"{cfg['dezenas_total']}{extra}", "Total de dezenas")
@@ -1991,7 +2004,7 @@ def main():
 
     with tab_gerador:
         st.header("🎰 Gerador de Apostas Otimizado")
-        st.markdown("Combina **frequência ponderada**, **atraso**, **pares fortes**, **quadrantes**, **score**, **ciclo**, **hot/cold**, **gap analysis** e **Markov**.")
+        st.markdown(f"Combina **frequência ponderada**, **atraso**, **pares fortes**, **quadrantes**, **score**, **ciclo**, **hot/cold**, **gap analysis** e **Markov** — gerando apostas com **{n_dezenas_aposta} dezenas** cada.")
         if st.session_state["gen_counter"] > 0:
             st.caption(f"🔄 Geração #{st.session_state['gen_counter']}")
         if st.button("⚡ Gerar Apostas", type="primary", key="gerar_apostas_button"):
@@ -2002,8 +2015,9 @@ def main():
                         lottery_name, draws_matrix, n_bets=n_bets, strategy=strategy,
                         weight_freq=w_freq, weight_delay=w_delay, weight_pairs=w_pairs,
                         trevos_matrix=trevos_matrix, meses_series=meses_series, decay=decay_factor,
-                        min_hot=min_hot, exclude_cold=exclude_cold,
-                        hot_set=hot_cold_data["hot_set"], cold_set=hot_cold_data["cold_set"])
+                        min_hot=min(min_hot, n_dezenas_aposta), exclude_cold=exclude_cold,
+                        hot_set=hot_cold_data["hot_set"], cold_set=hot_cold_data["cold_set"],
+                        pick=n_dezenas_aposta)
                     old_bets = st.session_state.get("bets", [])
                     if bets_are_unique(bets, old_bets) or attempt == max_attempts - 1:
                         break
@@ -2032,7 +2046,7 @@ def main():
             mes_bets = st.session_state.get("mes_bets", [])
             cycle_disp = st.session_state.get("cycle", cycle)
             rejection_reasons = st.session_state.get("rejection_reasons", [])
-            st.subheader(f"{len(bets)} Apostas Geradas")
+            st.subheader(f"{len(bets)} Apostas Geradas ({len(bets[0])} dezenas cada)")
             df_bets = pd.DataFrame(bets, columns=[f"d{i+1}" for i in range(len(bets[0]))])
             df_bets.insert(0, "#", range(1, len(bets) + 1))
             if scores_list:
@@ -2186,7 +2200,6 @@ def main():
                     metric_card("Média de Acertos", f"{df_conf['Acertos'].mean():.1f}", "por aposta")
                 with col_c3:
                     metric_card("Apostas Premiadas", len(tem_premio), "neste sorteio")
-                # Conferência automática do histórico de desempenho
                 if "historico_apostas" in st.session_state and st.session_state["historico_apostas"]:
                     novas_premiadas = conferir_historico_contra_sorteio(lottery_name, sorteio, cfg)
                     if novas_premiadas > 0:
@@ -2200,7 +2213,7 @@ def main():
         st.header("🔢 Line Reduction Interativo")
         st.markdown("Aplica filtros **progressivamente** e vê a redução em tempo real a cada filtro.")
         dezenas_input = st.text_area("Digite as dezenas separadas por vírgula (ex: 5, 12, 23, 34, 47, 58)", value="", height=80, key="dezenas_textarea_lr")
-        pick = cfg["dezenas_aposta"]
+        pick = n_dezenas_aposta
         custo_unit = cfg.get("custo_aposta", 5.0)
         try:
             dezenas_list = sorted(set(int(x.strip()) for x in dezenas_input.split(",") if x.strip()))
@@ -2336,7 +2349,7 @@ def main():
             row["Total apostas"] = r["total_bets"]
             coverage_rows.append(row)
         st.dataframe(pd.DataFrame(coverage_rows), use_container_width=True, hide_index=True)
-        st.caption("Esta tabela mostra **exatamente** quantas apostas terão cada nível de prêmio, dependendo de quantas de suas dezenas forem sorteadas.")
+        st.caption("Esta tabela mostra **exatamente** quantas apostas terão cada nível de prêmio,dependendo de quantas de suas dezenas forem sorteadas.")
         st.markdown("---")
         st.subheader("🎯 Escolher Dezenas")
         st.markdown(f"Escolha **{n_dezenas} dezenas** para o desdobramento:")
@@ -2680,7 +2693,7 @@ def main():
             st.warning("Gere apostas primeiro na aba **Gerador**.")
         else:
             bets = st.session_state["bets"]
-            st.info(f"**{len(bets)} apostas** contra **{n_draws} sorteios** do histórico.")
+            st.info(f"**{len(bets)} apostas** (com {len(bets[0])} dezenas cada) contra **{n_draws} sorteios** do histórico.")
             col_bt1, col_bt2 = st.columns([1, 1])
             with col_bt1:
                 if st.button("🧪 Testar no Histórico", type="primary", key="testar_historico_button"):
